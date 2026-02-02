@@ -1,2 +1,2 @@
 # Tibbou
-Data Lineage and Cost Mnagement
+Data Lineage and Cost Management
