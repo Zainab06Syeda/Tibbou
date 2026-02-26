@@ -3,6 +3,7 @@
 config:
     title: Tibbou Database Schema
 
+```mermaid
 erDiagram
   USERS {
     uuid id PK
