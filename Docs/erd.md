@@ -1,8 +1,5 @@
 # Tibbou Database Schema
 
-config:
-    title: Tibbou Database Schema
-
 ```mermaid
 erDiagram
   USERS {
