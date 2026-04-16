@@ -11,3 +11,16 @@ __pycache__/
 # Environment variables
 .env
 Backend/.env
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# Editor / OS clutter
+.DS_Store
+.vscode/
