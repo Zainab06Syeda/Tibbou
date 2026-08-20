@@ -1,26 +1,56 @@
 # Python virtual environments
 .venv/
 Backend/.venv/
+Frontend/.venv/
 venv/
 env/
 
 # Python cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 
 # Environment variables
 .env
+.env.*
+!.env.example
+!.env.sample
 Backend/.env
+Backend/.env.*
+!Backend/.env.example
+Frontend/**/.env
+Frontend/**/.env.*
+!Frontend/**/.env.example
 
 # Tooling caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.cache/
 
 # Coverage
 .coverage
+.coverage.*
 htmlcov/
+coverage/
+
+# Node / frontend dependencies and builds
+node_modules/
+dist/
+build/
+.vite/
+
+# Logs and temporary outputs
+*.log
+*.out
+*.err
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Editor / OS clutter
 .DS_Store
+Thumbs.db
 .vscode/
+.idea/
