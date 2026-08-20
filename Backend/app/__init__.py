@@ -1,0 +1,1 @@
+"""Tibbou backend application package."""
