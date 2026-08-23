@@ -28,6 +28,12 @@ BUSINESS_TABLES = LEGACY_BUSINESS_TABLES + (
 
 
 def upgrade() -> None:
+    # Supavisor can replace connection-startup settings. Keep rollout safety
+    # transaction-local so these values apply to this upgrade only.
+    op.execute("SET LOCAL lock_timeout = '5s'")
+    op.execute("SET LOCAL statement_timeout = '2min'")
+    op.execute("SET LOCAL idle_in_transaction_session_timeout = '60s'")
+
     op.create_table(
         "organizations",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),

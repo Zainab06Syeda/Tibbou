@@ -3,17 +3,20 @@
 Assessment date: 2026-08-23. This is a Phase 2B assessment and Phase 3 execution
 record. The only persistent hosted mutation was the separately approved Gate 5
 revocation of `anon` and `authenticated` business-table privileges. One
-approved Alembic upgrade was attempted, failed inside transactional DDL, and
-was verified to have rolled back completely. No hosted schema, row data, Auth,
-ownership, migration revision, or project setting remains changed by that
-attempt.
+approved Alembic upgrade was invoked, failed inside transactional DDL, and was
+verified to have rolled back completely. A later authorized execution stopped
+before Alembic was invoked because Supavisor did not preserve the requested
+connection-startup timeout settings. No hosted schema, row data, Auth,
+ownership, migration revision, role setting, database setting, or project
+setting remains changed by either event.
 
 ## Outcome
 
 **Not ready for another live rollout attempt yet.** Revision 20260818_120000 is
-an unapplied local expand/security migration. The failed attempt exposed one
-hosted baseline drift that is corrected locally and must receive a fresh SQL
-review and separate execution approval. Rollout also requires independently
+an unapplied local expand/security migration. The failed and aborted execution
+events exposed one hosted baseline drift and one Supavisor timeout behavior;
+both are corrected locally and require a fresh checkpoint, SQL review, and
+separate execution approval. Rollout also requires independently
 approved hosted least-privilege database login roles, explicit selection of the
 controlled Auth user and legacy organization, and completion of real Phase 1
 Auth/API testing. Disposable local PostgreSQL/Supabase policy validation and a
@@ -63,7 +66,7 @@ count(*) queries are authoritative and confirmed valuable data:
 All existing foreign-key relationships are valid. There are no duplicate
 lineage keys, invalid cost checks, or unsupported existing statuses.
 
-## Phase 3 failed attempt and hosted schema-drift diagnosis
+## Phase 3 failed/aborted execution and hosted diagnosis
 
 After the refreshed backup and final read-only preflight passed, the single
 approved `20260408_203100 -> 20260818_120000` Alembic attempt used the
@@ -83,6 +86,30 @@ and relationships matched the preflight; the candidate tables, roles, private
 schema, policies, triggers, and RLS changes were absent; grants returned to the
 documented Gate 5 baseline; and no application session or public-table lock
 remained.
+
+A later approved execution completed every source, revision, row/ID, session,
+and lock gate, but stopped before Alembic was invoked. Supavisor reported its
+effective connection settings as `lock_timeout = 0`, `statement_timeout =
+2min`, `idle_in_transaction_session_timeout = 0`, and `application_name =
+Supavisor` instead of preserving the requested startup options. The mandatory
+timeout gate therefore failed. No retry, stamp, or DDL statement followed, and
+a read-only post-abort check reconfirmed revision `20260408_203100`, the same 61
+row/ID digest, and absence of candidate objects, roles, policies, RLS, and
+locks.
+
+The separately approved capability test used the same Supavisor session
+connection and one transaction. These statements took effect inside it:
+
+```sql
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '2min';
+SET LOCAL idle_in_transaction_session_timeout = '60s';
+```
+
+`SHOW` returned `5s`, `2min`, and `1min`. After `ROLLBACK`, the connection
+returned to its prior `0`, `2min`, and `0` values. No database-wide or
+role-level setting changed. Supavisor's `application_name` is informational and
+is not a blocking rollout gate.
 
 A complete read-only catalog comparison against a clean PostgreSQL 17.6
 application of `20260408_203100` covered every public relation and column,
@@ -115,28 +142,46 @@ UNIQUE (
 )
 ```
 
-Contract coverage requires the guarded drop to appear exactly once and the
-final constraint to be recreated afterward. Local integration coverage creates
-two isolated databases, upgrades one with the legacy constraint present and one
-with it removed, and requires both to reach `20260818_120000` with the same
-preserved lineage row and final uniqueness columns. Both variants pass. The
-transaction-rolled-back SQL RLS scenario passes, all six local integration tests
-pass, and the complete 24-test backend suite passes. Backend import/OpenAPI and
-Alembic head/current checks pass; frontend type-check, lint, and production
-build pass; whitespace and changed-file secret scans pass.
+Contract coverage requires the guarded drop to appear exactly once, the final
+constraint to be recreated afterward, and all three `SET LOCAL` statements to
+occur exactly once before the first tenant table is created. Local integration
+coverage creates two isolated databases, upgrades one with the legacy
+constraint present and one with it removed, and requires both to reach
+`20260818_120000` with the same preserved lineage row, final uniqueness
+columns, and unchanged connection defaults. Both variants pass. A separate
+transaction test verifies the timeout values and their rollback. A deliberately
+late duplicate-function failure verifies that revision, data, tables, columns,
+roles, grants, policies, RLS, triggers, lineage uniqueness, and connection
+defaults all return to the captured baseline.
 
-The corrected full offline Alembic SQL remains 627 lines and has SHA-256
-`1890a80611664f565e3b94e663f2345817dba79d11f0fa4405469e2556d07b4d`.
-Compared byte-for-byte with the previously approved SQL, the only changed SQL
-statement is:
+The transaction-rolled-back SQL RLS scenario passes, all eight local integration
+tests pass, and the complete 27-test backend suite passes. Backend import/OpenAPI
+and Alembic head/current checks pass; frontend type-check, lint, production
+build, and audit pass; whitespace and changed-file secret scans pass.
+
+The earlier lineage correction changed the original unconditional drop as
+follows and produced the previously approved 627-line SQL with SHA-256
+`1890a80611664f565e3b94e663f2345817dba79d11f0fa4405469e2556d07b4d`:
 
 ```diff
 -ALTER TABLE lineage_edges DROP CONSTRAINT uq_lineage_edges_upstream_downstream_relationship;
 +alter table public.lineage_edges drop constraint if exists uq_lineage_edges_upstream_downstream_relationship;
 ```
 
-No other DDL, DML, role, grant, policy, trigger, function, RLS, or migration
-history statement changed.
+The timeout correction produces 633 lines with SHA-256
+`1c4df2b31ead079e1ddfc9c44e1fdd1ee8530f5f8094746a4b3245c5f4369e8f`.
+Compared byte-for-byte with that 627-line approved SQL, the only differences
+are these three statements at the beginning of revision `20260818_120000`:
+
+```diff
++SET LOCAL lock_timeout = '5s';
++SET LOCAL statement_timeout = '2min';
++SET LOCAL idle_in_transaction_session_timeout = '60s';
+```
+
+Removing those three generated statements reconstructs the prior SQL byte for
+byte and reproduces its approved SHA-256. No other DDL, DML, role, grant,
+policy, trigger, function, RLS, or migration-history statement changed.
 
 ## Phase 2B disposable local validation
 
@@ -397,7 +442,10 @@ Then:
 5. Freeze writes and workers. Re-query revision, counts, sample IDs,
    relationships, roles, grants, and blocking locks.
 6. Regenerate/review offline SQL and apply only
-   20260408_203100 -> 20260818_120000 with the migration connection.
+   20260408_203100 -> 20260818_120000 with the migration connection. The
+   revision itself must begin with the reviewed transaction-local 5-second
+   lock, 2-minute statement, and 60-second idle-in-transaction timeouts;
+   Supavisor's application name is not a blocking gate.
 7. Verify counts/IDs/relationships are unchanged, RLS is forced, helpers/grants
    match the matrix, legacy ownership is null, and Data API roles are denied.
 8. In one reviewed transaction, insert the approved organization and first
@@ -418,9 +466,10 @@ Then:
 
 ## Rollback limitations and blockers
 
-- The failed hosted attempt was transactionally rolled back. The corrected
-  unapplied migration and its newly generated SQL require a fresh checkpoint
-  review and separate approval before any hosted retry.
+- The failed hosted attempt was transactionally rolled back, and the later
+  timeout-gate abort occurred before Alembic was invoked. The corrected
+  unapplied migration and newly generated SQL require a fresh checkpoint review
+  and separate approval before any hosted retry.
 - Downgrade drops tenant-era tables/columns and can fail if queued rows have
   null started_at; it is unsafe after new writes. It deliberately does not
   restore insecure Data API/default grants. Prefer forward repair or restore.

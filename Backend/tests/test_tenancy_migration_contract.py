@@ -45,6 +45,21 @@ class TenancyMigrationContractTests(unittest.TestCase):
         self.assertIn('revision = "20260818_120000"', self.source)
         self.assertIn('down_revision = "20260408_203100"', self.source)
 
+    def test_upgrade_starts_with_transaction_local_timeouts(self):
+        settings = (
+            "set local lock_timeout = '5s'",
+            "set local statement_timeout = '2min'",
+            "set local idle_in_transaction_session_timeout = '60s'",
+        )
+        organization_table = self.sql.index("create table organizations")
+
+        for setting in settings:
+            self.assertEqual(self.sql.count(setting), 1)
+            self.assertLess(self.sql.index(setting), organization_table)
+
+        self.assertNotIn("alter database", self.sql)
+        self.assertNotIn("alter role", self.sql)
+
     def test_legacy_ownership_is_not_invented(self):
         self.assertNotIn("legacy tibbou workspace", self.sql)
         self.assertNotIn("00000000-0000-0000-0000-000000000000", self.sql)
