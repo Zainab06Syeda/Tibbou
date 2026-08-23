@@ -62,6 +62,25 @@ class TenancyMigrationContractTests(unittest.TestCase):
         self.assertGreater(sync_check, sync_update)
         self.assertGreater(raw_check, raw_update)
 
+    def test_legacy_lineage_constraint_drop_accepts_both_baselines(self):
+        legacy_drop = (
+            "alter table public.lineage_edges drop constraint if exists "
+            "uq_lineage_edges_upstream_downstream_relationship"
+        )
+        self.assertEqual(self.sql.count(legacy_drop), 1)
+
+    def test_final_lineage_uniqueness_is_recreated(self):
+        legacy_drop = self.sql.index(
+            "alter table public.lineage_edges drop constraint if exists "
+            "uq_lineage_edges_upstream_downstream_relationship"
+        )
+        final_constraint = self.sql.index(
+            "add constraint uq_lineage_edges_upstream_downstream_relationship "
+            "unique (upstream_dataset_id, downstream_dataset_id, "
+            "relationship_type, provenance)"
+        )
+        self.assertGreater(final_constraint, legacy_drop)
+
     def test_legacy_raw_sync_exceptions_can_be_tenant_backfilled(self):
         self.assertNotIn("ck_raw_ingestions_sync_run_required", self.sql)
         self.assertIn("create trigger raw_ingestions_require_sync_run", self.sql)

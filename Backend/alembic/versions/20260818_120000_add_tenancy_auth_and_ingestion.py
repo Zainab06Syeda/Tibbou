@@ -141,10 +141,13 @@ def upgrade() -> None:
         ["organization_id", "account_name", "database_name", "schema_name", "object_name"],
     )
 
-    op.drop_constraint(
-        "uq_lineage_edges_upstream_downstream_relationship",
-        "lineage_edges",
-        type_="unique",
+    # The hosted baseline can legitimately lack this legacy constraint even
+    # while Alembic reports 20260408_203100. Preserve compatibility with both
+    # baseline variants, then create the final provenance-aware uniqueness
+    # constraint below in either case.
+    op.execute(
+        "alter table public.lineage_edges drop constraint if exists "
+        "uq_lineage_edges_upstream_downstream_relationship"
     )
     op.add_column(
         "lineage_edges",

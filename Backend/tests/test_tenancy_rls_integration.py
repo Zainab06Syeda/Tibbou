@@ -1,11 +1,15 @@
 import os
 import secrets
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 from urllib.parse import urlparse
 
 import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 
 LOCAL_MARKER = "TIBBOU_PHASE2B_LOCAL_TEST"
@@ -16,6 +20,7 @@ USER_TWO = "11000000-0000-0000-0000-000000000002"
 STALE_USER = "11000000-0000-0000-0000-000000000099"
 ORG_ONE = "21000000-0000-0000-0000-000000000001"
 ORG_TWO = "21000000-0000-0000-0000-000000000002"
+BACKEND = Path(__file__).resolve().parents[1]
 
 
 def local_database_config() -> dict[str, object]:
@@ -41,6 +46,149 @@ def local_database_config() -> dict[str, object]:
         "password": parsed.password,
         "sslmode": "disable",
     }
+
+
+def local_database_url(config: dict[str, object], database: str) -> str:
+    return URL.create(
+        "postgresql+psycopg2",
+        username=str(config["user"]),
+        password=str(config["password"]),
+        host=str(config["host"]),
+        port=int(config["port"]),
+        database=database,
+        query={"sslmode": "disable"},
+    ).render_as_string(hide_password=False)
+
+
+class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
+    def test_upgrade_accepts_present_and_absent_legacy_lineage_constraint(self):
+        owner_config = local_database_config()
+
+        for legacy_constraint_present in (True, False):
+            variant = "present" if legacy_constraint_present else "absent"
+            database = f"tibbou_lineage_{variant}_{secrets.token_hex(4)}"
+
+            with self.subTest(legacy_constraint=variant):
+                admin = psycopg2.connect(**owner_config)
+                try:
+                    admin.autocommit = True
+                    with admin.cursor() as cursor:
+                        cursor.execute(
+                            sql.SQL("create database {} template template0").format(
+                                sql.Identifier(database)
+                            )
+                        )
+                finally:
+                    admin.close()
+
+                try:
+                    variant_config = {**owner_config, "dbname": database}
+                    with psycopg2.connect(**variant_config) as connection:
+                        with connection.cursor() as cursor:
+                            cursor.execute("create schema auth")
+                            cursor.execute(
+                                "create table auth.users (id uuid primary key)"
+                            )
+
+                    env = os.environ.copy()
+                    env["DATABASE_URL"] = local_database_url(owner_config, database)
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "alembic",
+                            "upgrade",
+                            "20260408_203100",
+                        ],
+                        cwd=BACKEND,
+                        env=env,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+
+                    with psycopg2.connect(**variant_config) as connection:
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "insert into public.datasets (id, name, system) values "
+                                "('61000000-0000-0000-0000-000000000001', 'upstream', 'test'), "
+                                "('61000000-0000-0000-0000-000000000002', 'downstream', 'test')"
+                            )
+                            cursor.execute(
+                                "insert into public.lineage_edges "
+                                "(id, upstream_dataset_id, downstream_dataset_id, relationship_type) "
+                                "values ('62000000-0000-0000-0000-000000000001', "
+                                "'61000000-0000-0000-0000-000000000001', "
+                                "'61000000-0000-0000-0000-000000000002', 'depends_on')"
+                            )
+                            if not legacy_constraint_present:
+                                cursor.execute(
+                                    "alter table public.lineage_edges drop constraint "
+                                    "uq_lineage_edges_upstream_downstream_relationship"
+                                )
+
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "alembic",
+                            "upgrade",
+                            "20260818_120000",
+                        ],
+                        cwd=BACKEND,
+                        env=env,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+
+                    with psycopg2.connect(**variant_config) as connection:
+                        with connection.cursor() as cursor:
+                            cursor.execute(
+                                "select version_num from public.alembic_version"
+                            )
+                            self.assertEqual(cursor.fetchone()[0], "20260818_120000")
+                            cursor.execute(
+                                "select array_agg(attribute.attname order by key.ordinality) "
+                                "from pg_constraint constraint_definition "
+                                "cross join lateral unnest(constraint_definition.conkey) "
+                                "with ordinality as key(attnum, ordinality) "
+                                "join pg_attribute attribute "
+                                "on attribute.attrelid = constraint_definition.conrelid "
+                                "and attribute.attnum = key.attnum "
+                                "where constraint_definition.conrelid = "
+                                "'public.lineage_edges'::regclass "
+                                "and constraint_definition.conname = "
+                                "'uq_lineage_edges_upstream_downstream_relationship'"
+                            )
+                            self.assertEqual(
+                                cursor.fetchone()[0],
+                                [
+                                    "upstream_dataset_id",
+                                    "downstream_dataset_id",
+                                    "relationship_type",
+                                    "provenance",
+                                ],
+                            )
+                            cursor.execute("select count(*) from public.lineage_edges")
+                            self.assertEqual(cursor.fetchone()[0], 1)
+                finally:
+                    admin = psycopg2.connect(**owner_config)
+                    try:
+                        admin.autocommit = True
+                        with admin.cursor() as cursor:
+                            cursor.execute(
+                                "select pg_terminate_backend(pid) from pg_stat_activity "
+                                "where datname = %s and pid <> pg_backend_pid()",
+                                (database,),
+                            )
+                            cursor.execute(
+                                sql.SQL("drop database if exists {}").format(
+                                    sql.Identifier(database)
+                                )
+                            )
+                    finally:
+                        admin.close()
 
 
 class TenancyRlsIntegrationTests(unittest.TestCase):

@@ -1,14 +1,19 @@
 # Tenancy/RLS migration readiness
 
-Assessment date: 2026-08-23. This is a Phase 2B assessment and execution record.
-The only hosted mutation was the separately approved Gate 5 revocation of
-`anon` and `authenticated` business-table privileges. No hosted schema, row
-data, Auth, ownership, migration revision, or project setting was changed.
+Assessment date: 2026-08-23. This is a Phase 2B assessment and Phase 3 execution
+record. The only persistent hosted mutation was the separately approved Gate 5
+revocation of `anon` and `authenticated` business-table privileges. One
+approved Alembic upgrade was attempted, failed inside transactional DDL, and
+was verified to have rolled back completely. No hosted schema, row data, Auth,
+ownership, migration revision, or project setting remains changed by that
+attempt.
 
 ## Outcome
 
-**Not ready for live rollout yet.** Revision 20260818_120000 is now a safer
-local expand/security migration, but rollout still requires an independently
+**Not ready for another live rollout attempt yet.** Revision 20260818_120000 is
+an unapplied local expand/security migration. The failed attempt exposed one
+hosted baseline drift that is corrected locally and must receive a fresh SQL
+review and separate execution approval. Rollout also requires independently
 approved hosted least-privilege database login roles, explicit selection of the
 controlled Auth user and legacy organization, and completion of real Phase 1
 Auth/API testing. Disposable local PostgreSQL/Supabase policy validation and a
@@ -31,8 +36,11 @@ read-only hosted application/Auth backup-and-restore proof are complete.
   authenticated grants while leaving service_role unchanged.
 - postgres owns the tables and has BYPASSRLS; service_role also has BYPASSRLS.
   anon and authenticated do not.
-- The live schema matches revision 20260408_203100 and has no organization,
-  tenant, owner, or application-user columns.
+- The live schema matches the columns, relations, owners, primary/foreign-key
+  constraints, and non-lineage indexes produced by revision 20260408_203100 and
+  has no organization, tenant, owner, or application-user columns. It lacks the
+  baseline lineage uniqueness constraint and its backing index; that isolated
+  drift is recorded below.
 - Auth has one confirmed, non-anonymous email user and one email identity.
   There are no SSO/SAML providers and no SSO users. No personal identifier was
   recorded here.
@@ -54,6 +62,81 @@ count(*) queries are authoritative and confirmed valuable data:
 
 All existing foreign-key relationships are valid. There are no duplicate
 lineage keys, invalid cost checks, or unsupported existing statuses.
+
+## Phase 3 failed attempt and hosted schema-drift diagnosis
+
+After the refreshed backup and final read-only preflight passed, the single
+approved `20260408_203100 -> 20260818_120000` Alembic attempt used the
+administrative migration connection with a 5-second lock timeout, 5-minute
+statement timeout, and 60-second idle-in-transaction timeout. PostgreSQL
+reported transactional DDL and stopped at:
+
+```sql
+ALTER TABLE lineage_edges
+DROP CONSTRAINT uq_lineage_edges_upstream_downstream_relationship;
+```
+
+The named constraint did not exist. No retry or stamp was performed. The
+post-error read-only verification proved complete rollback: Alembic remained at
+`20260408_203100`; all 61 business rows, full ID digests, representative IDs,
+and relationships matched the preflight; the candidate tables, roles, private
+schema, policies, triggers, and RLS changes were absent; grants returned to the
+documented Gate 5 baseline; and no application session or public-table lock
+remained.
+
+A complete read-only catalog comparison against a clean PostgreSQL 17.6
+application of `20260408_203100` covered every public relation and column,
+owners, constraints, indexes, triggers, public/private functions, table and
+schema grants, default ACLs, policies, and RLS/FORCE RLS state. The only
+application-schema differences were both sides of the same drift:
+
+- hosted lacks constraint
+  `uq_lineage_edges_upstream_downstream_relationship` on
+  `(upstream_dataset_id, downstream_dataset_id, relationship_type)`;
+- hosted consequently lacks that constraint's backing unique index.
+
+Hosted has no extra application objects, triggers, functions, or policies.
+Gate 5 grants, Supabase default ACLs, owners, and disabled RLS/FORCE RLS state
+match the expected pre-migration state. Grouping all ten hosted lineage rows by
+the legacy relationship key returned zero duplicate groups, so creation of the
+final provenance-aware uniqueness constraint is not blocked by existing data.
+
+Because `20260818_120000` remains unapplied, its legacy drop is corrected
+locally to use `DROP CONSTRAINT IF EXISTS`. This accepts both reconstructed
+baseline variants—the declared constraint present and the hosted-drift state
+where it is absent—while leaving the later final constraint creation unchanged:
+
+```sql
+UNIQUE (
+  upstream_dataset_id,
+  downstream_dataset_id,
+  relationship_type,
+  provenance
+)
+```
+
+Contract coverage requires the guarded drop to appear exactly once and the
+final constraint to be recreated afterward. Local integration coverage creates
+two isolated databases, upgrades one with the legacy constraint present and one
+with it removed, and requires both to reach `20260818_120000` with the same
+preserved lineage row and final uniqueness columns. Both variants pass. The
+transaction-rolled-back SQL RLS scenario passes, all six local integration tests
+pass, and the complete 24-test backend suite passes. Backend import/OpenAPI and
+Alembic head/current checks pass; frontend type-check, lint, and production
+build pass; whitespace and changed-file secret scans pass.
+
+The corrected full offline Alembic SQL remains 627 lines and has SHA-256
+`1890a80611664f565e3b94e663f2345817dba79d11f0fa4405469e2556d07b4d`.
+Compared byte-for-byte with the previously approved SQL, the only changed SQL
+statement is:
+
+```diff
+-ALTER TABLE lineage_edges DROP CONSTRAINT uq_lineage_edges_upstream_downstream_relationship;
++alter table public.lineage_edges drop constraint if exists uq_lineage_edges_upstream_downstream_relationship;
+```
+
+No other DDL, DML, role, grant, policy, trigger, function, RLS, or migration
+history statement changed.
 
 ## Phase 2B disposable local validation
 
@@ -335,6 +418,9 @@ Then:
 
 ## Rollback limitations and blockers
 
+- The failed hosted attempt was transactionally rolled back. The corrected
+  unapplied migration and its newly generated SQL require a fresh checkpoint
+  review and separate approval before any hosted retry.
 - Downgrade drops tenant-era tables/columns and can fail if queued rows have
   null started_at; it is unsafe after new writes. It deliberately does not
   restore insecure Data API/default grants. Prefer forward repair or restore.
