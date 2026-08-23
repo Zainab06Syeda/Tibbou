@@ -261,12 +261,6 @@ def upgrade() -> None:
         ondelete="RESTRICT",
         postgresql_not_valid=True,
     )
-    op.create_check_constraint(
-        "ck_raw_ingestions_sync_run_required",
-        "raw_ingestions",
-        "sync_run_id is not null",
-        postgresql_not_valid=True,
-    )
     op.create_index("ix_raw_ingestions_sync_run", "raw_ingestions", ["sync_run_id"])
     op.create_index(
         "ix_raw_ingestions_org_type_time",
@@ -476,6 +470,26 @@ def _create_rls_and_grants() -> None:
         "before update of role or delete on organization_memberships "
         "for each row execute function private.protect_last_owner()"
     )
+    op.execute(
+        """
+        create function private.enforce_raw_ingestion_sync_run()
+        returns trigger language plpgsql security definer set search_path = ''
+        as $$
+        begin
+          if new.sync_run_id is null
+             and (tg_op = 'INSERT' or old.sync_run_id is not null) then
+            raise exception 'raw ingestion requires a sync run'
+              using errcode = '23514';
+          end if;
+          return new;
+        end $$
+        """
+    )
+    op.execute(
+        "create trigger raw_ingestions_require_sync_run "
+        "before insert or update of sync_run_id on raw_ingestions "
+        "for each row execute function private.enforce_raw_ingestion_sync_run()"
+    )
 
     for signature in (
         "private.request_user_id()",
@@ -484,6 +498,7 @@ def _create_rls_and_grants() -> None:
         "private.has_organization_role(uuid, text[])",
         "private.can_bootstrap_owner(uuid, uuid)",
         "private.protect_last_owner()",
+        "private.enforce_raw_ingestion_sync_run()",
     ):
         op.execute(
             f"revoke all on function {signature} from public, anon, authenticated, service_role"
@@ -650,8 +665,12 @@ def downgrade() -> None:
         "drop trigger if exists organization_memberships_protect_last_owner "
         "on organization_memberships"
     )
+    op.execute(
+        "drop trigger if exists raw_ingestions_require_sync_run on raw_ingestions"
+    )
     for signature in (
         "private.protect_last_owner()",
+        "private.enforce_raw_ingestion_sync_run()",
         "private.can_bootstrap_owner(uuid, uuid)",
         "private.has_organization_role(uuid, text[])",
         "private.is_organization_member(uuid)",
@@ -670,7 +689,6 @@ def downgrade() -> None:
     op.drop_constraint("ck_raw_ingestions_status", "raw_ingestions", type_="check")
     op.drop_index("ix_raw_ingestions_org_type_time", table_name="raw_ingestions")
     op.drop_index("ix_raw_ingestions_sync_run", table_name="raw_ingestions")
-    op.drop_constraint("ck_raw_ingestions_sync_run_required", "raw_ingestions", type_="check")
     op.drop_constraint("fk_raw_ingestions_sync_run_id", "raw_ingestions", type_="foreignkey")
     op.drop_column("raw_ingestions", "artifact_hash")
     op.drop_column("raw_ingestions", "sync_run_id")

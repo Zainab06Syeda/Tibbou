@@ -1,13 +1,14 @@
 -- Run only after 20260818_120000 in an isolated Supabase-compatible database.
--- The database name safety gate and final ROLLBACK are intentional.
+-- The externally supplied local-test marker, revision gate, and final ROLLBACK
+-- are intentional. Standard local Supabase uses the database name `postgres`.
 \set ON_ERROR_STOP on
 
 begin;
 
 do $$
 begin
-  if current_database() !~* '(test|local|dev)' then
-    raise exception 'refusing tenancy scenario outside a test/local/dev database';
+  if current_setting('app.phase2b_local_test', true) is distinct from 'enabled' then
+    raise exception 'refusing tenancy scenario without the explicit local-test marker';
   end if;
   if not exists (
     select 1 from public.alembic_version

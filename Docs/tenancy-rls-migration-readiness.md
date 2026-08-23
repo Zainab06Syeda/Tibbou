@@ -1,17 +1,20 @@
 # Tenancy/RLS migration readiness
 
-Assessment date: 2026-08-19. This is a read-only Phase 2 assessment. No hosted
-database, Auth, project setting, or other external state was changed.
+Assessment date: 2026-08-23. This is a Phase 2B assessment and execution record.
+The only hosted mutation was the separately approved Gate 5 revocation of
+`anon` and `authenticated` business-table privileges. No hosted schema, row
+data, Auth, ownership, migration revision, or project setting was changed.
 
 ## Outcome
 
 **Not ready for live rollout yet.** Revision 20260818_120000 is now a safer
 local expand/security migration, but rollout still requires an independently
-verified backup, least-privilege database login roles, explicit selection of
-the controlled Auth user and legacy organization, a local PostgreSQL/Supabase
-policy test, and completion of real Phase 1 Auth/API testing.
+approved hosted least-privilege database login roles, explicit selection of the
+controlled Auth user and legacy organization, and completion of real Phase 1
+Auth/API testing. Disposable local PostgreSQL/Supabase policy validation and a
+read-only hosted application/Auth backup-and-restore proof are complete.
 
-## Verified hosted baseline
+## Verified hosted baseline before Gate 5 containment
 
 - Project dulvpwykcbctfiffxbsn is healthy in us-east-1 on PostgreSQL
   17.6.1.063. Its organization reports the Free plan.
@@ -23,8 +26,9 @@ policy test, and completion of real Phase 1 Auth/API testing.
   are owned by postgres; there are no public views, functions, triggers, or
   sequences.
 - RLS and FORCE RLS are disabled on every public table and no policies exist.
-  anon, authenticated, and service_role currently have all table privileges
-  through permissive default ACLs. This is a critical pre-rollout exposure.
+  Before Gate 5, anon, authenticated, and service_role had all table privileges
+  through permissive default ACLs. Gate 5 later revoked the anon and
+  authenticated grants while leaving service_role unchanged.
 - postgres owns the tables and has BYPASSRLS; service_role also has BYPASSRLS.
   anon and authenticated do not.
 - The live schema matches revision 20260408_203100 and has no organization,
@@ -41,7 +45,7 @@ count(*) queries are authoritative and confirmed valuable data:
 | datasets | 18 | 15 dbt, 2 lineage-test, 1 cost-test; sample UUID 0326dbfd-1588-49e1-8fb7-51f22c4a703b | Add nullable ownership and metadata; preserve IDs/values | 18 |
 | lineage_edges | 10 | All depends_on; no missing endpoints or self edges | Add nullable ownership/defaulted metadata and indexes | 10 |
 | cost_snapshots | 1 | References one dataset; no invalid period/negative amount | Add nullable ownership/checks/indexes | 1 |
-| raw_ingestions | 16 | 10 Snowflake query-history, 6 dbt manifest; 14 match sync-run detail, 2 do not | Link 14; keep 2 legacy links null; create no synthetic rows | 16 |
+| raw_ingestions | 16 | 10 Snowflake query-history, 6 dbt manifest; 14 match sync-run detail, 2 do not | Link 14; keep 2 legacy links null; reject new null links and clearing established links with a trigger | 16 |
 | sync_runs | 16 | 10 Snowflake and 6 dbt; 14 success, 2 failed | Add queue columns; keep legacy requester null | 16 |
 | retired users | 0 | Not Supabase Auth | Revoke access; FORCE RLS; no policies | 0 |
 | organizations / memberships | 0 | Not present | Create empty; no invented owner/workspace | 0 |
@@ -50,6 +54,44 @@ count(*) queries are authoritative and confirmed valuable data:
 
 All existing foreign-key relationships are valid. There are no duplicate
 lineage keys, invalid cost checks, or unsupported existing statuses.
+
+## Phase 2B disposable local validation
+
+An unlinked Supabase CLI project was created under the nonsynced Windows temp
+directory. No login, link, remote database command, or hosted credential was
+used. The validated stack used Supabase CLI 2.115.0, Docker 29.7.2, PostgreSQL
+17.6 (Supabase image 17.6.1.159), GoTrue 2.195.0, PostgREST 16.1, Realtime
+2.129.0, Storage API 1.69.11, and Studio 2026.08.17-sha-0c1da8f.
+
+The base revision was reconstructed and seeded with synthetic-only data: two
+Auth users, 18 datasets, 10 valid lineage edges, one cost snapshot, 16 raw
+ingestions, and 16 sync runs. Fourteen raw records matched sync-run detail and
+two deliberately did not. After the candidate migration:
+
+| Behavior | Local evidence | Result |
+|---|---|---|
+| Upgrade and preservation | Revision advanced to 20260818_120000; every seeded ID/count and existing FK relationship remained; no cascade FK exists | Pass |
+| Nullable expansion/backfill | Legacy ownership remained null after expand; new null ownership was rejected; all five tenant checks validated after synthetic ownership backfill | Pass |
+| Raw exceptions | Both unmatched rows survived and accepted ownership; new null links and clearing an established link were rejected | Pass after local correction |
+| RLS authorization | Same-organization reads and owner/operator-style writes succeeded; viewer and cross-organization writes failed | Pass |
+| Bootstrap and recursion | Creator/first-owner and subsequent membership paths completed without recursive-policy errors | Pass |
+| Context safety | Missing and stale context returned no rows; malformed UUID context raised before data access; transaction-local context did not survive commit, rollback, or reuse of the same pooled connection | Pass |
+| Least privilege | A real LOGIN role inheriting tibbou_runtime had NOBYPASSRLS; a local ES256 Auth token reached FastAPI, returned 200 for the member organization and 404 cross-organization | Pass locally; hosted role still absent |
+| Data API boundary | Local REST returned 401 for anon and 403 for authenticated on datasets; protected business grants were zero | Pass |
+| Upgrade failure | A forced late duplicate-function failure left Alembic at 20260408_203100, all seeded counts intact, and no partial tenant DDL | Pass |
+
+The first local run exposed a PostgreSQL staging defect: a NOT VALID
+`sync_run_id is not null` check also rejects later updates to the two preserved
+legacy exceptions, which blocked ownership backfill. Because the candidate is
+unapplied, it was corrected locally to use a trigger that rejects new null
+links and non-null-to-null changes while allowing unrelated updates to the two
+pre-existing null-link rows. The clean rebuild, prepared rollback-only SQL
+scenario, and 21-test backend suite then passed.
+
+The local direct PostgreSQL port does not provide SSL. `app.db` was narrowed to
+disable SSL only for loopback hosts while continuing to require SSL for every
+non-loopback database; this enabled the real local FastAPI/login-role proof
+without weakening the hosted default.
 
 ## Data flow and roles
 
@@ -62,6 +104,96 @@ go through Frontend/tibbou-data-flow/src/api/tibbou.js to FastAPI. FastAPI
 validates asymmetric JWT signature, issuer, audience, expiration, required
 claims, allowed algorithm, and authenticated role before resolving an
 authoritative membership.
+
+## Phase 2B manual Auth gate
+
+Local email/password sign-in with the existing confirmed account succeeded on
+2026-08-23. The following `GET /api/v1/organizations` returned 500 because the
+connected database remains at 20260408_203100 and has no `organizations` table;
+this is the expected schema/code mismatch. A later Vite connection refusal
+occurred only after the local backend stopped and is separate from that error.
+
+The controlled hosted-browser check remains manual because credentials must
+not be entered into chat or automation. Using the existing confirmed test
+account, the operator must sign in with email/password, reload the protected
+page to prove session restoration, confirm that a FastAPI protected request
+carries the bearer token, sign out, and confirm the protected route returns to
+login. A malformed token and an expired token must each receive a sanitized
+401 response from FastAPI. A deliberately incorrect password must display the
+sanitized UI message rather than hosted/internal details. Sign-up should be
+tested only if creating another controlled account is approved. Microsoft
+Entra ID and Okta controls remain disabled and make no provider requests.
+
+The organization dashboard cannot pass hosted end-to-end testing until the
+tenancy migration and an approved organization/membership are present.
+
+## Phase 2B emergency containment result
+
+Static inspection found no frontend Supabase business-table query: the client
+uses `supabase.auth.getSession()` to obtain a token and sends every business
+request to FastAPI. After explicit approval, the following table-scoped
+transaction was executed. It changed no data/RLS/ownership/Auth setting and
+left `service_role` and the current FastAPI database role unchanged:
+
+```sql
+BEGIN;
+REVOKE ALL PRIVILEGES ON TABLE
+  public.datasets,
+  public.lineage_edges,
+  public.cost_snapshots,
+  public.raw_ingestions,
+  public.sync_runs,
+  public.users
+FROM anon, authenticated;
+COMMIT;
+```
+
+Verify that effective privileges are absent (including any inherited grant):
+
+```sql
+SELECT r.role_name,
+       t.table_name,
+       has_table_privilege(r.role_name, format('public.%I', t.table_name), 'SELECT') AS can_select,
+       has_table_privilege(r.role_name, format('public.%I', t.table_name), 'INSERT') AS can_insert,
+       has_table_privilege(r.role_name, format('public.%I', t.table_name), 'UPDATE') AS can_update,
+       has_table_privilege(r.role_name, format('public.%I', t.table_name), 'DELETE') AS can_delete
+FROM (VALUES ('anon'), ('authenticated')) AS r(role_name)
+CROSS JOIN (VALUES
+  ('datasets'),
+  ('lineage_edges'),
+  ('cost_snapshots'),
+  ('raw_ingestions'),
+  ('sync_runs'),
+  ('users')
+) AS t(table_name)
+ORDER BY r.role_name, t.table_name;
+```
+
+All 84 effective privilege results were false. The remaining explicit grant
+count was zero for `anon` and `authenticated` and 42 for `service_role`, exactly
+matching its six-table baseline. An anonymous hosted REST datasets read
+returned 401. The configured FastAPI database login continued to read the
+unchanged counts, but no non-local absolute FastAPI URL or controlled user
+credential was available for the real authenticated HTTP check; that remains
+in the manual Auth gate. Alembic remained at 20260408_203100 and counts remained
+18/10/1/16/16 with zero broken lineage/cost relationships and the same 14
+matched raw/sync details.
+
+If emergency rollback is explicitly approved, restore the former hosted
+baseline table privileges with:
+
+```sql
+BEGIN;
+GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE
+  public.datasets,
+  public.lineage_edges,
+  public.cost_snapshots,
+  public.raw_ingestions,
+  public.sync_runs,
+  public.users
+TO anon, authenticated;
+COMMIT;
+```
 
 The current backend URL uses the Supavisor session endpoint on port 5432 as
 postgres.<project-ref>. It therefore runs as the table owner/BYPASSRLS role and
@@ -95,12 +227,49 @@ fixed search_path, checks session role and transaction-local identity/context,
 and has PUBLIC/anon/authenticated/service_role execution revoked. Future views
 must use security_invoker=true or remain unexposed with client grants revoked.
 
-## Backup procedure required before Phase 3
+## Phase 2B hosted backup and restore proof
 
-No backup was created. The verified organization is on the Free plan; current
-Supabase guidance does not promise automatic daily backups for Free projects
-and recommends regular exports. Do not treat platform availability as a usable
-pre-rollout backup.
+After separate approval, a read-only logical export was created in the approved
+nonsynced local backup directory outside the repository and OneDrive. The
+directory has inherited permissions disabled and grants access only to the
+current Windows user and SYSTEM. No credential file remains. The export used
+PostgreSQL 17.6 client tools from the already-cached Supabase PostgreSQL image
+and contains:
+
+- roles-only globals SQL with role passwords excluded;
+- schema/ACL SQL;
+- a full custom-format archive;
+- independent custom-format `public` and `auth` data archives;
+- an archive catalog, hosted count report, SHA-256 manifest, and restore
+  verification record.
+
+The approved archive was restored only into a second unlinked disposable local
+Supabase PostgreSQL 17.6 target. A direct all-managed-schema restore stopped on
+Supabase-provisioned Realtime state and was not treated as a success. After the
+disposable database was reset, the required application recovery scopes
+(`public` and `auth`) restored successfully with `--exit-on-error`,
+`--no-owner`, and `--no-privileges`; an empty managed `auth` schema was created
+first as required by the archive catalog. The restored Alembic revision was
+20260408_203100. Exact restored counts were 18 datasets, 10 lineage edges, one
+cost snapshot, 16 raw ingestions, 16 sync runs, and one Auth user. All five
+representative non-sensitive IDs matched the hosted report, all three public
+foreign keys were validated, no lineage/cost relationship was broken, and 14
+raw records retained matching sync-run detail. The two known unmatched raw
+records remained the only integrity exceptions.
+
+This proves recovery of Tibbou's application schema/data and Auth database
+records, not a complete self-hosted reconstruction of every Supabase-managed
+service schema. Full managed-service disaster recovery still depends on
+Supabase provisioning/support. The disposable restored database and copied
+archive were destroyed with `supabase stop --no-backup`; the approved source
+backup remains protected for rollout recovery.
+
+## Backup procedure for Phase 3
+
+The verified organization is on the Free plan; do not treat platform
+availability as a usable pre-rollout backup. Before the live migration, refresh
+the approved logical backup after the write freeze and repeat the verified
+application/Auth restore procedure.
 
 On a secured workstation with approved PostgreSQL client tools, supply
 credentials through a protected prompt/environment, never command history:
@@ -155,7 +324,9 @@ Then:
 9. Validate the five organization foreign keys/checks, then set their
    organization_id columns NOT NULL in a separately reviewed contract
    revision. Keep the two unmatched legacy raw_ingestions.sync_run_id values
-   nullable until provenance is explicitly resolved.
+   nullable until provenance is explicitly resolved; the staging trigger lets
+   those rows receive ownership but rejects new null links and prevents an
+   established link from being cleared.
 10. Switch API/worker secrets to least-privilege logins, deploy, and test two
     users/two organizations, cross-tenant reads/writes, roles, first-owner
     bootstrap, worker context, pool reuse, and direct role denial.
@@ -167,13 +338,13 @@ Then:
 - Downgrade drops tenant-era tables/columns and can fail if queued rows have
   null started_at; it is unsafe after new writes. It deliberately does not
   restore insecure Data API/default grants. Prefer forward repair or restore.
-- No suitable local/ephemeral PostgreSQL was available: Docker Desktop was not
-  running, no PostgreSQL service was installed, and WSL access was unavailable.
-  Cross-tenant RLS behavior remains unexecuted; only offline/static tests ran.
-  Backend/tests/tenancy_rls_scenarios.sql is transaction-rolled-back and
-  database-name-gated for the later isolated Supabase-compatible test run.
+- Disposable local PostgreSQL/Supabase validation is complete. The prepared
+  tenancy scenario remains transaction-rolled-back and now requires an
+  explicit externally supplied local-test marker plus the candidate revision.
 - Two legacy raw ingestions lack a matching sync-run detail and need an explicit
   provenance decision before that relationship can be fully validated.
-- Free-plan backup protection is insufficient until a dump is restored and
-  verified. Real Auth/API testing and least-privilege role provisioning remain
+- The application/Auth backup restore is verified, but complete reconstruction
+  of every Supabase-managed schema was not demonstrated; use the documented
+  scoped recovery path and retain Supabase-managed-service recovery support.
+- Real hosted Auth/API testing and least-privilege role provisioning remain
   manual prerequisites.

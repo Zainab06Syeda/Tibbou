@@ -62,6 +62,12 @@ class TenancyMigrationContractTests(unittest.TestCase):
         self.assertGreater(sync_check, sync_update)
         self.assertGreater(raw_check, raw_update)
 
+    def test_legacy_raw_sync_exceptions_can_be_tenant_backfilled(self):
+        self.assertNotIn("ck_raw_ingestions_sync_run_required", self.sql)
+        self.assertIn("create trigger raw_ingestions_require_sync_run", self.sql)
+        self.assertIn("before insert or update of sync_run_id", self.sql)
+        self.assertIn("tg_op = 'insert' or old.sync_run_id is not null", self.sql)
+
     def test_delete_actions_do_not_cascade_business_data(self):
         self.assertNotIn("on delete cascade", self.sql)
         self.assertIn("on delete restrict", self.sql)

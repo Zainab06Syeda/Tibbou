@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
@@ -17,7 +18,9 @@ engine_options = {
     "pool_recycle": 300,
 }
 if DATABASE_URL.startswith("postgresql"):
-    engine_options["connect_args"] = {"sslmode": "require"}
+    database_host = urlparse(DATABASE_URL).hostname
+    sslmode = "disable" if database_host in {"127.0.0.1", "localhost"} else "require"
+    engine_options["connect_args"] = {"sslmode": sslmode}
 
 engine = create_engine(DATABASE_URL, **engine_options)
 
