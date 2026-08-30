@@ -9,8 +9,15 @@ My contributions included:
 - Working with data lineage and cost-management concepts
 - Collaborating with team members on project requirements and deliverables
 
+**Oli Endashaw: Design and Developer**
 
-**Oli Endashaw: Design and developer**
+* Set up user authentication
+* Set up the database and migrations
+* Added organization-based data access and security
+* Connected the backend and worker to the database
+* Tested the authentication, API, and database
+* Updated the README and database documentation
+
 
 **Preeti Manandhar: Frontend and UI designer**
 
