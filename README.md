@@ -37,11 +37,10 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
 Copy-Item .env.example .env
-alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Run the worker in another process with `python -m app.worker`. Run local checks with `python -m unittest discover -s tests -v`. Database migration commands are intentionally deferred during Phase 1 authentication recovery.
+Run the worker in another process with `python -m app.worker`. Run local checks with `python -m unittest discover -s tests -v`. Apply database migrations only through the separately reviewed and approved rollout procedure.
 
 ## Frontend development
 

@@ -4,7 +4,9 @@ import os
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from psycopg2.errors import UniqueViolation
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import OrganizationAccess, require_operator, require_viewer
@@ -30,6 +32,13 @@ router = APIRouter(
 )
 
 
+def max_dbt_manifest_bytes() -> int:
+    return min(
+        max(int(os.getenv("MAX_DBT_MANIFEST_BYTES", "10485760")), 1024),
+        25 * 1024 * 1024,
+    )
+
+
 def _validated_idempotency_key(value: str | None, fallback: str) -> str:
     key = (value or fallback).strip()
     if not key or len(key) > 200:
@@ -50,6 +59,21 @@ def _existing_run(db: Session, organization_id: UUID, key: str) -> SyncRun | Non
         .one_or_none()
     )
 
+
+def _existing_run_after_idempotency_conflict(
+    db: Session, organization_id: UUID, key: str, exc: IntegrityError
+) -> SyncRun:
+    db.rollback()
+    constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+    if not isinstance(exc.orig, UniqueViolation) or constraint_name != "uq_sync_runs_org_idempotency":
+        raise exc
+
+    existing = _existing_run(db, organization_id, key)
+    if existing is None:
+        raise exc
+    return existing
+
+
 @router.post(
     "/dbt/manifest",
     response_model=QueuedSyncRunResponse,
@@ -62,12 +86,12 @@ def enqueue_dbt_manifest(
     db: Session = Depends(get_db),
 ) -> QueuedSyncRunResponse:
     encoded = json.dumps(payload.model_dump(mode="json"), separators=(",", ":"), sort_keys=True).encode()
-    max_bytes = min(max(int(os.getenv("MAX_DBT_MANIFEST_BYTES", "10485760")), 1024), 25 * 1024 * 1024)
+    max_bytes = max_dbt_manifest_bytes()
     max_nodes = min(max(int(os.getenv("MAX_DBT_MANIFEST_NODES", "50000")), 1), 100000)
     resource_count = len(payload.nodes) + len(payload.sources)
     if len(encoded) > max_bytes or resource_count > max_nodes:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="dbt manifest exceeds configured ingestion limits",
         )
 
@@ -90,20 +114,35 @@ def enqueue_dbt_manifest(
         idempotency_key=key,
         details={"artifact_hash": artifact_hash, "resource_count": resource_count},
     )
-    db.add(sync_run)
-    db.flush()
-    raw = RawIngestion(
-        organization_id=access.organization_id,
-        sync_run_id=sync_run.id,
-        source_system="dbt",
-        ingestion_type="manifest",
-        status="queued",
-        ingested_at=utcnow(),
-        raw_payload=payload.model_dump(mode="json"),
-        artifact_hash=artifact_hash,
-    )
-    db.add(raw)
-    db.commit()
+    try:
+        db.add(sync_run)
+        db.flush()
+        raw = RawIngestion(
+            organization_id=access.organization_id,
+            sync_run_id=sync_run.id,
+            source_system="dbt",
+            ingestion_type="manifest",
+            status="queued",
+            ingested_at=utcnow(),
+            raw_payload=payload.model_dump(mode="json"),
+            artifact_hash=artifact_hash,
+        )
+        db.add(raw)
+        db.commit()
+    except IntegrityError as exc:
+        existing = _existing_run_after_idempotency_conflict(
+            db, access.organization_id, key, exc
+        )
+        raw = (
+            db.query(RawIngestion)
+            .filter(RawIngestion.sync_run_id == existing.id)
+            .one_or_none()
+        )
+        return QueuedSyncRunResponse(
+            sync_run_id=existing.id,
+            raw_ingestion_id=raw.id if raw else None,
+            status=existing.status,
+        )
     return QueuedSyncRunResponse(sync_run_id=sync_run.id, raw_ingestion_id=raw.id, status="queued")
 
 
@@ -145,9 +184,14 @@ def enqueue_snowflake_sync(
         idempotency_key=key,
         details={"connection_id": str(connection.id)},
     )
-    db.add(run)
-    db.commit()
-    return QueuedSyncRunResponse(sync_run_id=run.id, status="queued")
+    try:
+        db.add(run)
+        db.commit()
+    except IntegrityError as exc:
+        run = _existing_run_after_idempotency_conflict(
+            db, access.organization_id, key, exc
+        )
+    return QueuedSyncRunResponse(sync_run_id=run.id, status=run.status)
 
 
 @router.get("/sync-runs/{sync_run_id}", response_model=SyncRunRead)

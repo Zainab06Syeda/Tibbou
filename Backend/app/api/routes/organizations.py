@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -46,18 +47,24 @@ def create_organization(
 ) -> OrganizationRead:
     set_request_user_context(db, user.id)
     organization = Organization(name=payload.name.strip(), slug=payload.slug, created_by=user.id)
-    db.add(organization)
-    db.flush()
-    db.add(
-        OrganizationMembership(
-            organization_id=organization.id, user_id=user.id, role="owner"
-        )
-    )
     try:
+        db.add(organization)
+        db.flush()
+        db.add(
+            OrganizationMembership(
+                organization_id=organization.id, user_id=user.id, role="owner"
+            )
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Organization slug exists") from exc
+        constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if isinstance(exc.orig, UniqueViolation) and constraint_name == "organizations_slug_key":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Organization slug exists",
+            ) from exc
+        raise
     # SET LOCAL context is cleared by commit; restore the validated identity
     # before the RLS-protected refresh starts its next transaction.
     set_request_user_context(db, user.id)

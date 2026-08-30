@@ -130,7 +130,13 @@ export default function Lineage() {
     try {
       const response = await ingestDbtManifest(payload);
       setManifestSuccess(response);
-      await loadLineageData();
+      try {
+        await loadLineageData();
+      } catch (requestError) {
+        setManifestError(
+          requestError.message || "Manifest refresh was queued, but lineage data could not be reloaded."
+        );
+      }
     } catch (requestError) {
       setManifestError(requestError.message || "dbt manifest refresh failed.");
     } finally {
@@ -163,6 +169,9 @@ export default function Lineage() {
   );
   const graphNodes = datasets.filter((dataset) => connectedNodeIds.has(dataset.id));
   const systems = [...new Set(datasets.map((dataset) => dataset.system).filter(Boolean))];
+  const visibleSystems = [
+    ...new Set(graphNodes.map((dataset) => dataset.system).filter(Boolean)),
+  ];
 
   if (loading) {
     return (
@@ -370,7 +379,7 @@ export default function Lineage() {
           </div>
           <div className="rounded-lg border border-border bg-card px-4 py-2">
             <span className="text-muted-foreground">Systems in view: </span>
-            <span className="font-semibold text-foreground">{systems.length}</span>
+            <span className="font-semibold text-foreground">{visibleSystems.length}</span>
           </div>
         </div>
 

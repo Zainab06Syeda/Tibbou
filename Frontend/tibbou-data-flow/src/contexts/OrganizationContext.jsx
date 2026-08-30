@@ -13,13 +13,17 @@ export function OrganizationProvider({ children }) {
   const [loading, setLoading] = useState(Boolean(session));
   const [error, setError] = useState("");
 
-  async function refresh() {
+  async function refresh(preferredId = null) {
     if (!session) return;
     setLoading(true);
     try {
       const rows = await getOrganizations();
       const storedId = localStorage.getItem(STORAGE_KEY);
-      const selected = rows.find((row) => row.id === storedId) || rows[0] || null;
+      const selected =
+        rows.find((row) => row.id === preferredId) ||
+        rows.find((row) => row.id === storedId) ||
+        rows[0] ||
+        null;
       setOrganizations(rows);
       setOrganization(selected);
       if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
@@ -50,8 +54,7 @@ export function OrganizationProvider({ children }) {
 
   async function createWorkspace(payload) {
     const created = await createOrganization(payload);
-    await refresh();
-    selectOrganization(created.id);
+    await refresh(created.id);
     return created;
   }
 

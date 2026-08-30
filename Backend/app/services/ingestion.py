@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -97,6 +98,9 @@ def process_dbt_manifest(db: Session, sync_run: SyncRun, raw: RawIngestion) -> d
         )
         .all()
     }
+    previously_active_edge_keys = {
+        key for key, edge in existing_edges.items() if edge.is_active
+    }
     for edge in existing_edges.values():
         edge.is_active = False
 
@@ -131,9 +135,7 @@ def process_dbt_manifest(db: Session, sync_run: SyncRun, raw: RawIngestion) -> d
             edge.is_active = True
             edge.observed_at = seen_at
 
-    lineage_edges_deactivated = sum(
-        1 for key, edge in existing_edges.items() if key not in active_edge_keys and not edge.is_active
-    )
+    lineage_edges_deactivated = len(previously_active_edge_keys - active_edge_keys)
     return {
         "datasets_processed": len(resources),
         "datasets_created": datasets_created,
@@ -215,17 +217,27 @@ def _fetch_snowflake_usage(connection: SnowflakeConnection) -> tuple[list[dict],
         object_names: dict[str, set[str]] = {}
         access_history_available = True
         try:
-            cursor.execute(
-                """
-                select query_id, value:objectName::string as object_name
-                from snowflake.account_usage.access_history,
-                     lateral flatten(input => base_objects_accessed)
-                where query_start_time >= dateadd(hour, -48, current_timestamp())
-                """
-            )
-            for query_id, object_name in cursor.fetchall():
-                if query_id and object_name:
-                    object_names.setdefault(str(query_id), set()).add(str(object_name).upper())
+            query_ids = [str(row["query_id"]) for row in usage if row.get("query_id")]
+            if query_ids:
+                cursor.execute(
+                    """
+                    with relevant_query_ids as (
+                        select value::string as query_id
+                        from table(flatten(input => parse_json(%s)))
+                    )
+                    select history.query_id, accessed.value:objectName::string as object_name
+                    from snowflake.account_usage.access_history as history
+                    join relevant_query_ids as relevant
+                      on relevant.query_id = history.query_id,
+                         lateral flatten(input => history.base_objects_accessed) as accessed
+                    where history.query_start_time >= dateadd(hour, -48, current_timestamp())
+                    limit 10000
+                    """,
+                    (json.dumps(query_ids),),
+                )
+                for query_id, object_name in cursor.fetchall():
+                    if query_id and object_name:
+                        object_names.setdefault(str(query_id), set()).add(str(object_name).upper())
         except snowflake.connector.errors.ProgrammingError:
             access_history_available = False
         return usage, object_names, access_history_available

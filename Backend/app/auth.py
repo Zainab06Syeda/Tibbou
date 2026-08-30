@@ -8,6 +8,7 @@ import jwt
 from fastapi import Depends, HTTPException, Path, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientConnectionError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -41,6 +42,13 @@ def _auth_error(detail: str = "Invalid or expired access token") -> HTTPExceptio
     )
 
 
+def _auth_service_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Authentication service temporarily unavailable",
+    )
+
+
 @lru_cache(maxsize=1)
 def _supabase_auth_settings() -> tuple[str, str, str]:
     supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
@@ -60,7 +68,7 @@ def _supabase_auth_settings() -> tuple[str, str, str]:
 def _jwk_client() -> PyJWKClient:
     _, _, jwks_url = _supabase_auth_settings()
     # Supabase Edge caches JWKS for ten minutes; do not retain signing keys longer.
-    return PyJWKClient(jwks_url, cache_jwk_set=True, lifespan=600)
+    return PyJWKClient(jwks_url, cache_jwk_set=True, lifespan=600, timeout=5)
 
 
 def _decode_access_token(token: str) -> dict:
@@ -82,6 +90,8 @@ def _decode_access_token(token: str) -> dict:
         )
     except HTTPException:
         raise
+    except PyJWKClientConnectionError as exc:
+        raise _auth_service_error() from exc
     except (jwt.PyJWTError, ValueError, RuntimeError) as exc:
         raise _auth_error() from exc
 
