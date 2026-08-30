@@ -65,8 +65,8 @@ def create_organization(
                 detail="Organization slug exists",
             ) from exc
         raise
-    # SET LOCAL context is cleared by commit; restore the validated identity
-    # before the RLS-protected refresh starts its next transaction.
+    # Commit clears SET LOCAL context. Restore the verified user before the
+    # RLS-protected refresh starts a new transaction.
     set_request_user_context(db, user.id)
     db.refresh(organization)
     return OrganizationRead(

@@ -28,8 +28,8 @@ BUSINESS_TABLES = LEGACY_BUSINESS_TABLES + (
 
 
 def upgrade() -> None:
-    # Supavisor can replace connection-startup settings. Keep rollout safety
-    # transaction-local so these values apply to this upgrade only.
+    # Supavisor may ignore connection startup settings. Use transaction-local
+    # timeouts so they apply only to this upgrade.
     op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute("SET LOCAL statement_timeout = '2min'")
     op.execute("SET LOCAL idle_in_transaction_session_timeout = '60s'")
@@ -102,8 +102,8 @@ def upgrade() -> None:
     )
     op.create_index("ix_snowflake_connections_org", "snowflake_connections", ["organization_id"])
 
-    # Expand first. NOT VALID constraints protect new writes while allowing the
-    # separately authorized legacy backfill to happen later.
+    # Add nullable columns first. NOT VALID constraints protect new writes while
+    # allowing the separately approved legacy backfill to run later.
     for table_name in LEGACY_BUSINESS_TABLES:
         op.add_column(
             table_name,
@@ -147,10 +147,9 @@ def upgrade() -> None:
         ["organization_id", "account_name", "database_name", "schema_name", "object_name"],
     )
 
-    # The hosted baseline can legitimately lack this legacy constraint even
-    # while Alembic reports 20260408_203100. Preserve compatibility with both
-    # baseline variants, then create the final provenance-aware uniqueness
-    # constraint below in either case.
+    # The hosted baseline may lack this legacy constraint even at revision
+    # 20260408_203100. Support both states, then create the final
+    # provenance-aware uniqueness constraint below.
     op.execute(
         "alter table public.lineage_edges drop constraint if exists "
         "uq_lineage_edges_upstream_downstream_relationship"
@@ -283,8 +282,8 @@ def upgrade() -> None:
         postgresql_not_valid=True,
     )
 
-    # Add these after all migration-owned updates. A NOT VALID check still
-    # applies to rows touched after creation, even when they predate it.
+    # Add these after the migration updates. A NOT VALID check still applies to
+    # future changes to existing rows.
     for table_name in LEGACY_BUSINESS_TABLES:
         op.create_check_constraint(
             f"ck_{table_name}_organization_required",
@@ -591,8 +590,8 @@ def _create_rls_and_grants() -> None:
         op.execute(f"alter table {table_name} enable row level security")
         op.execute(f"alter table {table_name} force row level security")
 
-    # Browser business-data access is intentionally absent: Supabase provides
-    # identity, while FastAPI uses dedicated least-privilege database roles.
+    # The browser uses Supabase only for identity. FastAPI accesses business
+    # data through dedicated least-privilege roles.
     op.execute("revoke all on all tables in schema public from anon, authenticated, service_role")
     op.execute("revoke all on all sequences in schema public from anon, authenticated, service_role")
     op.execute(
@@ -652,8 +651,8 @@ def _create_rls_and_grants() -> None:
 
 
 def downgrade() -> None:
-    # Destructive after tenant-era writes. Intentionally does not restore the
-    # insecure Data API grants/default privileges revoked during upgrade.
+    # Unsafe after tenant-era writes. Do not restore the insecure Data API
+    # grants or default privileges removed during upgrade.
     op.execute("drop function if exists private.claim_sync_run()")
     for table_name in BUSINESS_TABLES:
         for operation in ("delete", "update", "insert", "select"):

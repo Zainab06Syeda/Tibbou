@@ -1,12 +1,12 @@
 # Tibbou frontend
 
-React/Vite client for the Tibbou API. Phase 1 uses Supabase email/password authentication and sends the resulting Supabase access token to protected FastAPI routes. Microsoft Entra ID and Okta are visible roadmap controls but remain disabled and make no authentication requests.
+React and Vite client for the Tibbou API. Phase 1 uses Supabase email and password authentication, then sends the access token to protected FastAPI routes. Microsoft Entra ID and Okta appear as roadmap options but remain disabled and make no authentication requests.
 
 Copy `.env.example` to `.env`, configure only the Supabase project URL and publishable key, then run `npm install` and `npm run dev`. Never expose a Supabase secret or service-role key through a `VITE_` variable.
 
-In the Supabase Dashboard, verify Email authentication is enabled. For safer testing, keep email confirmation enabled and create controlled users from **Authentication > Users**. If public sign-up with confirmation disabled is temporarily selected, remember that the hosted Supabase Auth endpoint remains internet-accessible even when this frontend is not published; enable that mode only long enough to create test accounts, then restore confirmation or disable public sign-up.
+In the Supabase Dashboard, confirm that email authentication is enabled. Keep email confirmation on and create controlled users from **Authentication > Users**. If you temporarily allow public sign-up without confirmation, remember that the hosted Auth endpoint remains public even when this frontend is unpublished. Use that setting only long enough to create test accounts, then restore confirmation or disable public sign-up.
 
-Set the Supabase Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback`. Start the app with `npm run dev` and open the exact URL Vite prints. `VITE_ENABLE_ENTRA_SSO` and `VITE_ENABLE_OKTA_SSO` are presentation flags only: missing values default to false, and Phase 1 never treats either flag as proof that a provider is securely configured.
+Set the Supabase Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback`. Start the app with `npm run dev` and open the URL Vite prints. `VITE_ENABLE_ENTRA_SSO` and `VITE_ENABLE_OKTA_SSO` only control the UI. Missing values default to false, and neither flag proves that a provider is securely configured.
 
 Quality checks:
 

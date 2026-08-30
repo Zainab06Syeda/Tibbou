@@ -2,21 +2,18 @@
 
 ## Project
 
-Tibbou is a full-stack prototype for data lineage and Snowflake usage/cost visibility:
+Tibbou is a full-stack prototype for data lineage and Snowflake usage and cost visibility. It uses:
 
-React/Vite frontend
-
-FastAPI, SQLAlchemy, Alembic, and Pydantic backend
-
-Supabase Auth and PostgreSQL
-
-dbt manifest.json and Snowflake-derived metadata
+- React and Vite for the frontend
+- FastAPI, SQLAlchemy, Alembic, and Pydantic for the backend
+- Supabase Auth and PostgreSQL
+- dbt `manifest.json` and Snowflake-derived metadata
 
 Verify this summary against the repository. Preserve working MVP behavior and avoid overengineering.
 
 ## Working rules
 
-inspect the repository, Git status, relevant code, and migrations before editing.
+Inspect the repository, Git status, relevant code, and migrations before editing.
 
 Follow the current task's scope. Make the smallest coherent change; defer adjacent work.
 
@@ -52,7 +49,7 @@ Do not assume Entra, Azure, Okta, OAuth/OIDC, or SAML is configured because code
 
 Keep authentication separate from authorization. Resolve organization access from authoritative memberships, never email domain, frontend state, or user-editable metadata.
 
-Intended pattern: browser to Supabase for Auth; browser to FastAPI for business data, unless verified code and the current task establish otherwise.
+Unless the code or task says otherwise, the browser uses Supabase for Auth and FastAPI for business data.
 
 Validate Supabase JWT signature, issuer, audience, expiration, and allowed algorithm. Never weaken validation to make tests pass.
 
@@ -70,7 +67,7 @@ Keep models, schemas, migrations, and the live schema aligned.
 
 Do not add placeholder runtime failures, unnecessary abstractions, infrastructure, tables, or files.
 
-Return consistent, sanitized API and UI errors; do not swallow exceptions or leak internals.
+Return consistent, safe API and UI errors. Do not swallow exceptions or expose internal details.
 
 Use existing commands. Do not install or upgrade dependencies unless authorized.
 

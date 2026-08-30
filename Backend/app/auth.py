@@ -67,7 +67,7 @@ def _supabase_auth_settings() -> tuple[str, str, str]:
 @lru_cache(maxsize=1)
 def _jwk_client() -> PyJWKClient:
     _, _, jwks_url = _supabase_auth_settings()
-    # Supabase Edge caches JWKS for ten minutes; do not retain signing keys longer.
+    # Supabase Edge caches JWKS for ten minutes, so use the same limit here.
     return PyJWKClient(jwks_url, cache_jwk_set=True, lifespan=600, timeout=5)
 
 

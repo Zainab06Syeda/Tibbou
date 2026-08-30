@@ -19,7 +19,7 @@ class OrganizationMembership(Base):
     organization_id = Column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
     )
-    # auth.users is managed by Supabase Auth; the Alembic migration adds this FK.
+    # Supabase Auth manages auth.users; the migration creates this foreign key.
     user_id = Column(UUID(as_uuid=True), nullable=False)
     role = Column(Text, nullable=False, server_default="viewer")
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -1,26 +1,25 @@
 # Tenancy/RLS migration readiness
 
-Assessment date: 2026-08-23. This is a Phase 2B assessment and Phase 3 execution
-record. The only persistent hosted mutation was the separately approved Gate 5
-revocation of `anon` and `authenticated` business-table privileges. One
-approved Alembic upgrade was invoked, failed inside transactional DDL, and was
-verified to have rolled back completely. A later authorized execution stopped
-before Alembic was invoked because Supavisor did not preserve the requested
-connection-startup timeout settings. No hosted schema, row data, Auth,
-ownership, migration revision, role setting, database setting, or project
-setting remains changed by either event.
+Assessment date: 2026-08-23. This document records the Phase 2B assessment and
+Phase 3 execution. The only lasting hosted change was the separately approved
+Gate 5 revocation of `anon` and `authenticated` business-table privileges. One
+approved Alembic upgrade failed during transactional DDL and rolled back
+completely. A later authorized run stopped before Alembic because Supavisor did
+not preserve the requested connection startup timeouts. Neither event left any
+other change to the hosted schema, data, Auth, ownership, migration revision,
+roles, database settings, or project settings.
 
 ## Outcome
 
 **Not ready for another live rollout attempt yet.** Revision 20260818_120000 is
-an unapplied local expand/security migration. The failed and aborted execution
-events exposed one hosted baseline drift and one Supavisor timeout behavior;
-both are corrected locally and require a fresh checkpoint, SQL review, and
-separate execution approval. Rollout also requires independently
-approved hosted least-privilege database login roles, explicit selection of the
-controlled Auth user and legacy organization, and completion of real Phase 1
-Auth/API testing. Disposable local PostgreSQL/Supabase policy validation and a
-read-only hosted application/Auth backup-and-restore proof are complete.
+an unapplied local expand and security migration. The failed and aborted runs
+revealed one hosted baseline drift and one Supavisor timeout behavior. Both are
+fixed locally but still need a new checkpoint, SQL review, and separate
+execution approval. Rollout also requires approved least-privilege hosted
+database logins, explicit selection of the controlled Auth user and legacy
+organization, and real Phase 1 Auth and API testing. Local PostgreSQL and
+Supabase policy validation and a read-only application and Auth restore test
+are complete.
 
 ## Verified hosted baseline before Gate 5 containment
 
@@ -49,7 +48,7 @@ read-only hosted application/Auth backup-and-restore proof are complete.
   recorded here.
 
 The Supabase table-list estimate incorrectly reported zero rows. Direct
-count(*) queries are authoritative and confirmed valuable data:
+`count(*)` queries confirmed the data:
 
 | Table | Current | Evidence/relationships | Migration treatment | Expected after expand |
 |---|---:|---|---|---:|
@@ -111,7 +110,7 @@ returned to its prior `0`, `2min`, and `0` values. No database-wide or
 role-level setting changed. Supavisor's `application_name` is informational and
 is not a blocking rollout gate.
 
-A complete read-only catalog comparison against a clean PostgreSQL 17.6
+A complete read-only catalog comparison with a clean PostgreSQL 17.6
 application of `20260408_203100` covered every public relation and column,
 owners, constraints, indexes, triggers, public/private functions, table and
 schema grants, default ACLs, policies, and RLS/FORCE RLS state. The only
@@ -124,14 +123,14 @@ application-schema differences were both sides of the same drift:
 
 Hosted has no extra application objects, triggers, functions, or policies.
 Gate 5 grants, Supabase default ACLs, owners, and disabled RLS/FORCE RLS state
-match the expected pre-migration state. Grouping all ten hosted lineage rows by
+match the expected pre-migration state. Grouping the ten hosted lineage rows by
 the legacy relationship key returned zero duplicate groups, so creation of the
 final provenance-aware uniqueness constraint is not blocked by existing data.
 
 Because `20260818_120000` remains unapplied, its legacy drop is corrected
 locally to use `DROP CONSTRAINT IF EXISTS`. This accepts both reconstructed
-baseline variants—the declared constraint present and the hosted-drift state
-where it is absent—while leaving the later final constraint creation unchanged:
+baseline variants: the declared constraint may be present or already absent.
+The later final constraint creation remains unchanged:
 
 ```sql
 UNIQUE (

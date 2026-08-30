@@ -1,6 +1,6 @@
 # Tibbou
 
-Tibbou is a tenant-aware data lineage and Snowflake usage service. The application uses a React/Vite browser client, Supabase Auth, FastAPI, SQLAlchemy/Alembic, PostgreSQL, and a lightweight database-backed ingestion worker.
+Tibbou is a tenant-aware data lineage and Snowflake usage service. It uses React and Vite, Supabase Auth, FastAPI, SQLAlchemy and Alembic, PostgreSQL, and a lightweight database-backed ingestion worker.
 
 ## Architecture
 
@@ -17,7 +17,7 @@ Worker ◄───────────────────────�
   └── customer-owned Snowflake account
 ```
 
-Interactive API requests never execute Snowflake SQL. They enqueue a run and return `202 Accepted`; `python -m app.worker` processes queued work separately.
+API requests do not run Snowflake SQL directly. They queue a run and return `202 Accepted`. The `python -m app.worker` process handles queued work separately.
 
 ## Security model
 
@@ -40,7 +40,7 @@ Copy-Item .env.example .env
 uvicorn app.main:app --reload
 ```
 
-Run the worker in another process with `python -m app.worker`. Run local checks with `python -m unittest discover -s tests -v`. Apply database migrations only through the separately reviewed and approved rollout procedure.
+Run the worker in a separate process with `python -m app.worker`. Run local checks with `python -m unittest discover -s tests -v`. Apply database migrations only through the reviewed and approved rollout procedure.
 
 ## Frontend development
 
@@ -63,13 +63,13 @@ Verification commands are `npm run typecheck`, `npm run lint`, `npm run build`, 
 6. Use a constrained non-owner runtime database login. Keep migration credentials separate.
 7. Test RLS with two users in different organizations before deployment.
 
-The frontend SSO flags control presentation only and do not configure or validate an identity provider. Entra, Okta, SAML connections, and provider-to-organization routing are deferred and are not created by Phase 1 code.
+The frontend SSO flags only control the UI. They do not configure or validate an identity provider. Phase 1 does not create Entra, Okta, SAML connections, or provider-to-organization routing.
 
 ## Snowflake onboarding
 
 Each Tibbou organization connects its own Snowflake account. Prefer External OAuth or workload identity; use a dedicated `TYPE=SERVICE` key-pair user only as a fallback. Grant a dedicated role only the required `SNOWFLAKE` database roles (`USAGE_VIEWER`, `OBJECT_VIEWER`, and optionally `GOVERNANCE_VIEWER`) plus `USAGE` on an approved warehouse.
 
-The worker reads `QUERY_ATTRIBUTION_HISTORY` and, when the customer edition permits, `ACCESS_HISTORY`. Exact physical relation matches produce equal-weight allocations whose total is one. Accounts without `ACCESS_HISTORY` complete with `partial` status and retain unallocated query credits rather than inventing lineage.
+The worker reads `QUERY_ATTRIBUTION_HISTORY` and, when available for the customer's edition, `ACCESS_HISTORY`. Exact physical relation matches receive equal allocation weights that add up to one. Accounts without `ACCESS_HISTORY` finish with `partial` status and keep query credits unallocated instead of inventing lineage.
 
 Local development can resolve a connection's secret reference through `SNOWFLAKE_SECRET_<REFERENCE>_*` environment variables. `APP_ENV=production` disables that resolver: a deployment-specific managed secret provider must be supplied before production Snowflake runs.
 
