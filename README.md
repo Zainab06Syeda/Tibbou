@@ -122,22 +122,9 @@ The frontend currently has no separate unit-test script.
 
 ## Required Supabase setup
 
-1. Rotate the previously exposed database credential before using the project.
-2. The connected project is active; do not restore, pause, branch, reset, or otherwise change its project state during Phase 1.
-3. Do not apply, stamp, downgrade, or edit database migrations during Phase 1. Schema and RLS work is deferred to a separately authorized phase.
-4. The connected project currently publishes an ES256 signing key, which matches the API's allowed asymmetric algorithms. The API intentionally rejects shared-secret JWTs.
-5. For Phase 1, enable Supabase email/password Auth and configure `http://localhost:5173` plus `/auth/callback` in the allowed local URLs. Entra and Okta remain disabled roadmap items.
-6. Use a constrained non-owner runtime database login. Keep migration credentials separate.
-7. Test RLS with two users in different organizations before deployment.
+Enable email and password authentication in the Supabase project. 
+Configure http://localhost:5173 as an allowed local URL and add http://localhost:5173/auth/callback as an allowed redirect URL.
+Use the same Supabase project for the backend and frontend environment settings. Keep database credentials and other private values out of Git.
 
-The frontend SSO flags only control the UI. They do not configure or validate an identity provider. Phase 1 does not create Entra, Okta, SAML connections, or provider-to-organization routing.
-
-## Snowflake onboarding
-
-Each Tibbou organization connects its own Snowflake account. Prefer External OAuth or workload identity; use a dedicated `TYPE=SERVICE` key-pair user only as a fallback. Grant a dedicated role only the required `SNOWFLAKE` database roles (`USAGE_VIEWER`, `OBJECT_VIEWER`, and optionally `GOVERNANCE_VIEWER`) plus `USAGE` on an approved warehouse.
-
-The worker reads `QUERY_ATTRIBUTION_HISTORY` and, when available for the customer's edition, `ACCESS_HISTORY`. Exact physical relation matches receive equal allocation weights that add up to one. Accounts without `ACCESS_HISTORY` finish with `partial` status and keep query credits unallocated instead of inventing lineage.
-
-Local development can resolve a connection's secret reference through `SNOWFLAKE_SECRET_<REFERENCE>_*` environment variables. `APP_ENV=production` disables that resolver: a deployment-specific managed secret provider must be supplied before production Snowflake runs.
 
 See the [ERD](Docs/erd.md) for the database schema and relationships.
