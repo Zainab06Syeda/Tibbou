@@ -54,3 +54,6 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Local workflow instructions
+AGENTS.md
