@@ -21,6 +21,8 @@ STALE_USER = "11000000-0000-0000-0000-000000000099"
 ORG_ONE = "21000000-0000-0000-0000-000000000001"
 ORG_TWO = "21000000-0000-0000-0000-000000000002"
 BACKEND = Path(__file__).resolve().parents[1]
+EXPAND_REVISION = "20260818_120000"
+OWNERSHIP_REVISION = "20260901_120000"
 MIGRATION_TIMEOUTS = (
     ("lock_timeout", "5s"),
     ("statement_timeout", "2min"),
@@ -413,6 +415,406 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                     )
             finally:
                 admin.close()
+
+
+class OrganizationOwnershipIntegrationTests(unittest.TestCase):
+    tables = (
+        "datasets",
+        "lineage_edges",
+        "cost_snapshots",
+        "raw_ingestions",
+        "sync_runs",
+    )
+
+    @staticmethod
+    def create_database(owner_config: dict[str, object], prefix: str) -> str:
+        database = f"{prefix}_{secrets.token_hex(4)}"
+        admin = psycopg2.connect(**owner_config)
+        try:
+            admin.autocommit = True
+            with admin.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("create database {} template template0").format(
+                        sql.Identifier(database)
+                    )
+                )
+        finally:
+            admin.close()
+        return database
+
+    @staticmethod
+    def drop_database(owner_config: dict[str, object], database: str) -> None:
+        admin = psycopg2.connect(**owner_config)
+        try:
+            admin.autocommit = True
+            with admin.cursor() as cursor:
+                cursor.execute(
+                    "select pg_terminate_backend(pid) from pg_stat_activity "
+                    "where datname = %s and pid <> pg_backend_pid()",
+                    (database,),
+                )
+                cursor.execute(
+                    sql.SQL("drop database if exists {}").format(
+                        sql.Identifier(database)
+                    )
+                )
+        finally:
+            admin.close()
+
+    @staticmethod
+    def run_alembic(
+        owner_config: dict[str, object],
+        database: str,
+        revision: str,
+        *,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        env = os.environ.copy()
+        env["DATABASE_URL"] = local_database_url(owner_config, database)
+        return subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", revision],
+            cwd=BACKEND,
+            env=env,
+            check=check,
+            capture_output=True,
+            text=True,
+        )
+
+    @staticmethod
+    def initialize_database(owner_config: dict[str, object], database: str) -> dict:
+        variant_config = {**owner_config, "dbname": database}
+        with psycopg2.connect(**variant_config) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("create schema auth")
+                cursor.execute("create table auth.users (id uuid primary key)")
+        return variant_config
+
+    @classmethod
+    def business_counts(cls, cursor) -> dict[str, int]:
+        counts = {}
+        for table_name in cls.tables:
+            cursor.execute(
+                sql.SQL("select count(*) from public.{}").format(
+                    sql.Identifier(table_name)
+                )
+            )
+            counts[table_name] = cursor.fetchone()[0]
+        return counts
+
+    @classmethod
+    def ownership_constraint_states(cls, cursor) -> list[bool]:
+        cursor.execute(
+            "select constraint_definition.convalidated "
+            "from pg_constraint constraint_definition "
+            "join pg_class relation on relation.oid = constraint_definition.conrelid "
+            "join pg_namespace namespace on namespace.oid = relation.relnamespace "
+            "where namespace.nspname = 'public' "
+            "and relation.relname = any(%s) "
+            "and (constraint_definition.conname like 'fk\\_%%\\_organization\\_id' escape '\\' "
+            "or constraint_definition.conname like "
+            "'ck\\_%%\\_organization\\_required' escape '\\') "
+            "order by relation.relname, constraint_definition.conname",
+            (list(cls.tables),),
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    def test_contract_requires_owned_rows_and_preserves_data(self):
+        owner_config = local_database_config()
+        database = self.create_database(owner_config, "tibbou_ownership")
+
+        try:
+            variant_config = self.initialize_database(owner_config, database)
+            self.run_alembic(
+                owner_config,
+                database,
+                "20260408_203100",
+                check=True,
+            )
+
+            with psycopg2.connect(**variant_config) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "insert into public.datasets (id, name, system) values "
+                        "('61000000-0000-0000-0000-000000000001', 'upstream', 'test'), "
+                        "('61000000-0000-0000-0000-000000000002', 'downstream', 'test')"
+                    )
+                    cursor.execute(
+                        "insert into public.lineage_edges "
+                        "(id, upstream_dataset_id, downstream_dataset_id, relationship_type) "
+                        "values ('62000000-0000-0000-0000-000000000001', "
+                        "'61000000-0000-0000-0000-000000000001', "
+                        "'61000000-0000-0000-0000-000000000002', 'depends_on')"
+                    )
+                    cursor.execute(
+                        "insert into public.cost_snapshots "
+                        "(id, dataset_id, period_start, period_end, cost_amount, collected_at) "
+                        "values ('63000000-0000-0000-0000-000000000001', "
+                        "'61000000-0000-0000-0000-000000000001', "
+                        "now() - interval '1 hour', now(), 1, now())"
+                    )
+                    cursor.execute(
+                        "insert into public.raw_ingestions "
+                        "(id, source_system, ingestion_type, status, ingested_at, raw_payload) "
+                        "values ('64000000-0000-0000-0000-000000000001', "
+                        "'dbt', 'manifest', 'success', now(), '{}'::jsonb)"
+                    )
+                    cursor.execute(
+                        "insert into public.sync_runs "
+                        "(id, run_type, status, started_at, details) "
+                        "values ('65000000-0000-0000-0000-000000000001', "
+                        "'dbt', 'success', now(), "
+                        "'{\"raw_ingestion_id\": "
+                        "\"64000000-0000-0000-0000-000000000001\"}'::jsonb)"
+                    )
+
+            self.run_alembic(
+                owner_config,
+                database,
+                EXPAND_REVISION,
+                check=True,
+            )
+
+            with psycopg2.connect(**variant_config) as connection:
+                with connection.cursor() as cursor:
+                    preserved_counts = self.business_counts(cursor)
+
+            failed_upgrade = self.run_alembic(
+                owner_config,
+                database,
+                OWNERSHIP_REVISION,
+                check=False,
+            )
+            self.assertNotEqual(failed_upgrade.returncode, 0)
+
+            with psycopg2.connect(**variant_config) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("select version_num from public.alembic_version")
+                    self.assertEqual(cursor.fetchone()[0], EXPAND_REVISION)
+                    self.assertEqual(self.business_counts(cursor), preserved_counts)
+                    self.assertEqual(
+                        self.ownership_constraint_states(cursor),
+                        [False] * 10,
+                    )
+                    cursor.execute(
+                        "select is_nullable from information_schema.columns "
+                        "where table_schema = 'public' "
+                        "and table_name = any(%s) and column_name = 'organization_id' "
+                        "order by table_name",
+                        (list(self.tables),),
+                    )
+                    self.assertEqual(cursor.fetchall(), [("YES",)] * 5)
+
+                    cursor.execute(
+                        "insert into auth.users (id) values "
+                        "('11000000-0000-0000-0000-000000000010')"
+                    )
+                    cursor.execute(
+                        "insert into public.organizations (id, name, slug, created_by) "
+                        "values ('21000000-0000-0000-0000-000000000010', "
+                        "'Owned Local', 'owned-local', "
+                        "'11000000-0000-0000-0000-000000000010')"
+                    )
+                    cursor.execute(
+                        "insert into public.organization_memberships "
+                        "(id, organization_id, user_id, role) values "
+                        "('31000000-0000-0000-0000-000000000010', "
+                        "'21000000-0000-0000-0000-000000000010', "
+                        "'11000000-0000-0000-0000-000000000010', 'owner')"
+                    )
+                    for table_name in self.tables:
+                        cursor.execute(
+                            sql.SQL(
+                                "update public.{} set organization_id = %s "
+                                "where organization_id is null"
+                            ).format(sql.Identifier(table_name)),
+                            ("21000000-0000-0000-0000-000000000010",),
+                        )
+
+            self.run_alembic(
+                owner_config,
+                database,
+                OWNERSHIP_REVISION,
+                check=True,
+            )
+
+            with psycopg2.connect(**variant_config) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("select version_num from public.alembic_version")
+                    self.assertEqual(cursor.fetchone()[0], OWNERSHIP_REVISION)
+                    self.assertEqual(self.business_counts(cursor), preserved_counts)
+                    self.assertEqual(
+                        self.ownership_constraint_states(cursor),
+                        [True] * 10,
+                    )
+                    cursor.execute(
+                        "select is_nullable from information_schema.columns "
+                        "where table_schema = 'public' "
+                        "and table_name = any(%s) and column_name = 'organization_id' "
+                        "order by table_name",
+                        (list(self.tables),),
+                    )
+                    self.assertEqual(cursor.fetchall(), [("NO",)] * 5)
+                    cursor.execute(
+                        "select upstream_dataset_id, downstream_dataset_id "
+                        "from public.lineage_edges where id = "
+                        "'62000000-0000-0000-0000-000000000001'"
+                    )
+                    self.assertEqual(
+                        tuple(str(value) for value in cursor.fetchone()),
+                        (
+                            "61000000-0000-0000-0000-000000000001",
+                            "61000000-0000-0000-0000-000000000002",
+                        ),
+                    )
+                    cursor.execute(
+                        "select dataset_id from public.cost_snapshots where id = "
+                        "'63000000-0000-0000-0000-000000000001'"
+                    )
+                    self.assertEqual(
+                        str(cursor.fetchone()[0]),
+                        "61000000-0000-0000-0000-000000000001",
+                    )
+                    cursor.execute(
+                        "select sync_run_id from public.raw_ingestions where id = "
+                        "'64000000-0000-0000-0000-000000000001'"
+                    )
+                    self.assertEqual(
+                        str(cursor.fetchone()[0]),
+                        "65000000-0000-0000-0000-000000000001",
+                    )
+        finally:
+            self.drop_database(owner_config, database)
+
+    def test_second_organization_sentinel_is_isolated(self):
+        owner_config = local_database_config()
+        database = self.create_database(owner_config, "tibbou_isolation")
+        login_role = f"tibbou_phase3_test_{secrets.token_hex(4)}"
+        login_password = secrets.token_urlsafe(24)
+
+        try:
+            variant_config = self.initialize_database(owner_config, database)
+            self.run_alembic(owner_config, database, "head", check=True)
+
+            with psycopg2.connect(**variant_config) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "insert into auth.users (id) values (%s), (%s)",
+                        (USER_ONE, USER_TWO),
+                    )
+                    cursor.execute(
+                        "insert into public.organizations (id, name, slug, created_by) values "
+                        "(%s, 'Local One', 'local-one', %s), "
+                        "(%s, 'Local Two', 'local-two', %s)",
+                        (ORG_ONE, USER_ONE, ORG_TWO, USER_TWO),
+                    )
+                    cursor.execute(
+                        "insert into public.organization_memberships "
+                        "(id, organization_id, user_id, role) values "
+                        "('31000000-0000-0000-0000-000000000001', %s, %s, 'owner'), "
+                        "('31000000-0000-0000-0000-000000000002', %s, %s, 'owner')",
+                        (ORG_ONE, USER_ONE, ORG_TWO, USER_TWO),
+                    )
+
+            admin = psycopg2.connect(**owner_config)
+            try:
+                admin.autocommit = True
+                with admin.cursor() as cursor:
+                    cursor.execute(
+                        sql.SQL(
+                            "create role {} login password {} "
+                            "nosuperuser nocreatedb nocreaterole nobypassrls "
+                            "in role tibbou_runtime"
+                        ).format(
+                            sql.Identifier(login_role),
+                            sql.Literal(login_password),
+                        )
+                    )
+            finally:
+                admin.close()
+
+            def connect_login():
+                return psycopg2.connect(
+                    host=owner_config["host"],
+                    port=owner_config["port"],
+                    dbname=database,
+                    user=login_role,
+                    password=login_password,
+                    sslmode="disable",
+                )
+
+            sentinel_id = "61000000-0000-0000-0000-000000000099"
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(cursor, USER_TWO, ORG_TWO)
+                cursor.execute(
+                    "insert into public.datasets (id, organization_id, name, system) "
+                    "values (%s, %s, 'Organization Two Sentinel', 'test')",
+                    (sentinel_id, ORG_TWO),
+                )
+                cursor.execute(
+                    "select name from public.datasets where id = %s",
+                    (sentinel_id,),
+                )
+                self.assertEqual(cursor.fetchone()[0], "Organization Two Sentinel")
+
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(cursor, USER_ONE, ORG_ONE)
+                cursor.execute(
+                    "select count(*) from public.datasets where id = %s",
+                    (sentinel_id,),
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
+                cursor.execute(
+                    "update public.datasets set name = 'forbidden' where id = %s",
+                    (sentinel_id,),
+                )
+                self.assertEqual(cursor.rowcount, 0)
+                cursor.execute(
+                    "delete from public.datasets where id = %s",
+                    (sentinel_id,),
+                )
+                self.assertEqual(cursor.rowcount, 0)
+
+            connection = connect_login()
+            try:
+                with connection.cursor() as cursor:
+                    TenancyRlsIntegrationTests.set_context(cursor, USER_ONE, ORG_ONE)
+                    with self.assertRaises(psycopg2.errors.InsufficientPrivilege):
+                        cursor.execute(
+                            "insert into public.datasets "
+                            "(id, organization_id, name, system) values "
+                            "('61000000-0000-0000-0000-000000000098', %s, "
+                            "'forbidden', 'test')",
+                            (ORG_TWO,),
+                        )
+            finally:
+                connection.rollback()
+                connection.close()
+
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(cursor, USER_TWO, ORG_TWO)
+                cursor.execute(
+                    "select name from public.datasets where id = %s",
+                    (sentinel_id,),
+                )
+                self.assertEqual(cursor.fetchone()[0], "Organization Two Sentinel")
+                cursor.execute(
+                    "delete from public.datasets where id = %s",
+                    (sentinel_id,),
+                )
+                self.assertEqual(cursor.rowcount, 1)
+        finally:
+            admin = psycopg2.connect(**owner_config)
+            try:
+                admin.autocommit = True
+                with admin.cursor() as cursor:
+                    cursor.execute(
+                        sql.SQL("drop role if exists {}").format(
+                            sql.Identifier(login_role)
+                        )
+                    )
+            finally:
+                admin.close()
+            self.drop_database(owner_config, database)
 
 
 class TenancyRlsIntegrationTests(unittest.TestCase):

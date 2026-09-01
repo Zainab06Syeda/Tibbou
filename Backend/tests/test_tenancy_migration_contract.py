@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -12,6 +13,12 @@ MIGRATION = (
     / "versions"
     / "20260818_120000_add_tenancy_auth_and_ingestion.py"
 )
+OWNERSHIP_MIGRATION = (
+    BACKEND
+    / "alembic"
+    / "versions"
+    / "20260901_120000_finalize_organization_ownership.py"
+)
 
 
 def offline_sql() -> str:
@@ -24,6 +31,27 @@ def offline_sql() -> str:
             "alembic",
             "upgrade",
             "20260408_203100:20260818_120000",
+            "--sql",
+        ],
+        cwd=BACKEND,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.lower()
+
+
+def ownership_offline_sql() -> str:
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+psycopg2://localhost/tibbou_offline"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "upgrade",
+            "20260818_120000:20260901_120000",
             "--sql",
         ],
         cwd=BACKEND,
@@ -137,6 +165,82 @@ class TenancyMigrationContractTests(unittest.TestCase):
         )
         self.assertNotIn("grant select on datasets to authenticated", self.sql)
         self.assertNotIn("grant select on datasets to anon", self.sql)
+
+
+class OrganizationOwnershipMigrationContractTests(unittest.TestCase):
+    tables = (
+        "datasets",
+        "lineage_edges",
+        "cost_snapshots",
+        "raw_ingestions",
+        "sync_runs",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = OWNERSHIP_MIGRATION.read_text(encoding="utf-8").lower()
+        cls.sql = ownership_offline_sql()
+
+    def test_revision_extends_the_tenancy_expand_revision(self):
+        self.assertIn('revision = "20260901_120000"', self.source)
+        self.assertIn('down_revision = "20260818_120000"', self.source)
+
+    def test_upgrade_uses_transaction_local_timeouts(self):
+        settings = (
+            "set local lock_timeout = '5s'",
+            "set local statement_timeout = '2min'",
+            "set local idle_in_transaction_session_timeout = '60s'",
+        )
+        first_validation = self.sql.index("validate constraint")
+
+        for setting in settings:
+            self.assertEqual(self.sql.count(setting), 1)
+            self.assertLess(self.sql.index(setting), first_validation)
+
+        self.assertNotIn("alter database", self.sql)
+        self.assertNotIn("alter role", self.sql)
+
+    def test_all_deferred_constraints_are_validated_before_not_null(self):
+        self.assertEqual(self.sql.count("validate constraint"), 10)
+        self.assertEqual(
+            self.sql.count("alter column organization_id set not null"),
+            len(self.tables),
+        )
+
+        for table_name in self.tables:
+            foreign_key = self.sql.index(
+                f"alter table public.{table_name} validate constraint "
+                f"fk_{table_name}_organization_id"
+            )
+            required_check = self.sql.index(
+                f"alter table public.{table_name} validate constraint "
+                f"ck_{table_name}_organization_required"
+            )
+            not_null = self.sql.index(
+                f"alter table public.{table_name} alter column organization_id "
+                "set not null"
+            )
+            self.assertLess(foreign_key, required_check)
+            self.assertLess(required_check, not_null)
+
+    def test_upgrade_contains_no_ownership_or_row_mutation(self):
+        for statement in (
+            "insert into public.",
+            "update public.",
+            "delete from public.",
+        ):
+            self.assertNotIn(statement, self.source)
+
+        uuid_pattern = re.compile(
+            r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"
+        )
+        self.assertIsNone(uuid_pattern.search(self.source))
+
+    def test_downgrade_restores_expand_stage_guard_without_clearing_data(self):
+        self.assertIn("nullable=true", self.source)
+        self.assertIn("postgresql_not_valid=true", self.source)
+        self.assertNotIn("organization_id = null", self.source)
+        self.assertNotIn("organization_id=null", self.source)
 
 
 if __name__ == "__main__":
