@@ -11,48 +11,7 @@ Tibbou is a tenant-aware service for viewing data lineage and attributing Snowfl
 - Database and authentication: PostgreSQL and Supabase Auth
 - Data integration: dbt `manifest.json` artifacts and the Snowflake Python connector
 
-## Repository layout
-
-```text
-Backend/
-  app/                  FastAPI routes, models, schemas, services, and worker
-  alembic/versions/     Database migrations
-  tests/                Backend tests and RLS scenarios
-Frontend/
-  tibbou-data-flow/     React and Vite application
-Docs/
-  erd.md                Database design and relationships
-README.md               Project setup and operating instructions
-```
-
-## Architecture
-
-```text
-React/Vite ── Supabase Auth (email/password) ──► FastAPI
-                                                     │
-                                                     ├──► Supabase Postgres
-                                                     │      tenant-scoped rows + RLS
-                                                     │
-                                                     └──► queued sync_runs
-                                                               │
-Worker ◄────────────────────────────────────────────────────────┘
-  ├── dbt artifact reconciliation
-  └── customer-owned Snowflake account
-```
-
-API requests do not run Snowflake SQL directly. They queue a run and return `202 Accepted`. The `python -m app.worker` process handles queued work separately.
-
-## Security model
-
-- Supabase `auth.users` is the identity source. The old local password table is deprecated and unused.
-- FastAPI verifies asymmetric Supabase access tokens through the project JWKS endpoint and rejects HS256 tokens.
-- Every business route is versioned and organization-scoped under `/api/v1/organizations/{organization_id}`.
-- Organization roles are `owner`, `admin`, `operator`, and `viewer`. Authentication and membership authorization are checked separately.
-- PostgreSQL RLS mirrors the application boundary. The migration enables and forces RLS on tenant tables.
-- The browser receives only a Supabase publishable key. Never use a secret or service-role key in Vite variables.
-- Snowflake connection rows contain only non-secret metadata and a secret-manager reference. Query text and private keys are not stored in PostgreSQL.
-
-## Installation
+## Installation and setup
 
 ### Backend
 
@@ -65,6 +24,12 @@ Copy-Item .env.example .env
 ```
 
 Set the values in `Backend/.env` for the PostgreSQL database and Supabase project used for local development.
+
+### Supabase
+
+Enable email and password authentication. Set the Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback` as a redirect URL.
+
+Use the same Supabase project in the backend and frontend environment files. Keep database credentials and other private values out of Git.
 
 ### Frontend
 
@@ -119,12 +84,3 @@ npm audit
 ```
 
 The frontend currently has no separate unit-test script.
-
-## Required Supabase setup
-
-Enable email and password authentication in the Supabase project. 
-Configure http://localhost:5173 as an allowed local URL and add http://localhost:5173/auth/callback as an allowed redirect URL.
-Use the same Supabase project for the backend and frontend environment settings. Keep database credentials and other private values out of Git.
-
-
-See the [ERD](Docs/erd.md) for the database schema and relationships.
