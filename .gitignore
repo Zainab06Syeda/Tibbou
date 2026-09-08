@@ -1,31 +1,59 @@
-#env
+# Python virtual environments
+.venv/
+Backend/.venv/
+Frontend/.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
 .env
 .env.*
+!.env.example
+!.env.sample
+Backend/.env
+Backend/.env.*
+!Backend/.env.example
+Frontend/**/.env
+Frontend/**/.env.*
+!Frontend/**/.env.example
 
-# Logs
-/logs
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+
+# Node / frontend dependencies and builds
+node_modules/
+dist/
+build/
+.vite/
+
+# Logs and temporary outputs
 *.log
+*.out
+*.err
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Editor / OS clutter
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+.vscode/
+.idea/
 
-.env
-.vite
+# Local workflow instructions
+AGENTS.md
