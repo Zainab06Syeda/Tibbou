@@ -1,119 +1,86 @@
-Tibbou: Data Lineage and Cost Management
+# Tibbou
 
-**Welcome to Tibbou** 
+## Purpose
 
-Tibbou is a data lineage and cost management application designed to help organizations understand, monitor, and manage their data infrastructure.
+Tibbou is a tenant-aware service for viewing data lineage and attributing Snowflake query usage to datasets. It includes a browser interface, an API, PostgreSQL storage, and a database-backed ingestion worker.
 
-The project provides users with information about data sources, data relationships, lineage, and associated costs. By bringing this information together in one application, Tibbou helps users better understand how data moves through their systems and where resources and costs are being generated.
+## Technologies
 
-The goal of Tibbou is to make complex data infrastructure information easier to understand for both technical and non-technical users.
+- Frontend: React, Vite, Tailwind CSS, and Supabase JS
+- Backend: FastAPI, SQLAlchemy, Alembic, and Pydantic
+- Database and authentication: PostgreSQL and Supabase Auth
+- Data integration: dbt `manifest.json` artifacts and the Snowflake Python connector
 
-**Key Features**
-- Data lineage visualization and management
-- Data source and metadata management
-- Cost management and analysis
-- Backend APIs for retrieving and processing data
-- Database integration for storing application information
-- User-friendly frontend interface
-- Data processing and transformation using dbt
-- Integration with Snowflake data
-- API-based communication between application components
+## Installation and setup
 
-**Tools and Technologies used**
+### Backend
 
-FastAPI, Supabase, CodeRabbit, React, AWS Amplify
+```powershell
+cd Backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+Copy-Item .env.example .env
+```
 
-**Installation Instruction**
-For development or local setup, the following tools may be required depending on the project components:
+Set the values in `Backend/.env` for the PostgreSQL database and Supabase project used for local development.
 
-- Base44 account/access to the Tibbou project
-- Git
-- Visual Studio Code
-- Python 3.x
-- Required database and API access
+### Supabase
 
-Access to required environment variables and credentials
-Getting the Project
+Enable email and password authentication. Set the Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback` as a redirect URL.
 
-If you need to work with the source code, clone the Tibbou GitHub repository:
+Use the same Supabase project in the backend and frontend environment files. Keep database credentials and other private values out of Git.
 
-git clone [TIBBOU-GITHUB-REPOSITORY-URL]
+### Frontend
 
-- Navigate to the project directory
+```powershell
+cd Frontend\tibbou-data-flow
+npm install
+Copy-Item .env.example .env
+```
 
-cd tibbou
-Base44 Setup
+Set the values in `Frontend/tibbou-data-flow/.env` for the API and Supabase project used for local development.
 
-Tibbou uses Base44 to build, configure, and run the application.
+## Run the application
 
-- Sign in to Base44 and open the Tibbou project.
-- Ensure the required project files and configurations are available.
-- Configure any required environment variables or integrations.
-- Verify that the application's database, API connections, and other required services are properly configured.
-- Use Base44's application preview or deployment functionality to run the application.
+Start the backend API from `Backend`:
 
-**How to run the application**
-If local development is required, clone the GitHub repository and install the dependencies specified by the project.
+```powershell
+.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload
+```
 
-For the Python backend, create and activate a virtual environment:
+Queued ingestion requires a second backend process:
 
-python -m venv venv
+```powershell
+.venv\Scripts\Activate.ps1
+python -m app.worker
+```
 
-On Windows:
+Start the frontend from `Frontend/tibbou-data-flow`:
 
-venv\Scripts\activate
+```powershell
+npm run dev
+```
 
-Install the required dependencies:
+Open the local URL printed by Vite.
 
-pip install -r requirements.txt
+## Testing
 
-Start the development server with:
+Run the backend test suite from `Backend`:
 
-uvicorn main:app --reload
+```powershell
+.venv\Scripts\Activate.ps1
+python -m unittest discover -s tests -v
+```
 
-The API will normally be available at:
+Run the existing frontend checks from `Frontend/tibbou-data-flow`:
 
-http://127.0.0.1:8000
+```powershell
+npm run typecheck
+npm run lint
+npm run build
+npm audit
+```
 
-FastAPI's interactive API documentation can be accessed at:
-
-http://127.0.0.1:8000/docs
-
-
-**Testing**
-Testing was performed to verify that the major components of Tibbou function correctly.
-
-**Backend/API Testing**
-The following areas should be tested:
-
-- API starts successfully
-- API endpoints respond correctly
-- Valid requests return the expected data
-- Invalid requests return appropriate errors
-- Database connections work correctly
-- Required environment variables are configured
-- Frontend can communicate with the backend
-
-**Database Testing**
-Database functionality should be tested by verifying:
-
-- Database connection
-- Data insertion
-- Data retrieval
-- Data updates
-- Data relationships
-- Correct handling of missing or invalid data
-
-**Frontend Testing**
-The frontend should be tested to verify:
-
-- Pages load correctly
-- Navigation works
-- Data is displayed correctly
-- API data is retrieved successfully
-- User interactions work as expected
-- Error messages are displayed appropriately
-- Interface works across different screen sizes
-
-**Team Contributions**
-Tibbou was developed as a capstone project through collaborative work across data engineering, backend development, frontend development, documentation, and project management.
+The frontend currently has no separate unit-test script.
