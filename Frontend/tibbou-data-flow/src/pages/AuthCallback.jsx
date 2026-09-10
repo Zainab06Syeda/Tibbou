@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { readOAuthCallback } from "@/lib/authConfig";
 import { getAuthErrorMessage } from "@/lib/authErrors";
 import { supabase } from "@/lib/supabase";
 
@@ -10,15 +11,21 @@ export default function AuthCallback() {
 
   useEffect(() => {
     async function finish() {
-      const code = new URLSearchParams(window.location.search).get("code");
-      if (code) {
+      const { code, providerError } = readOAuthCallback(window.location.search);
+      if (!supabase || providerError || !code) {
+        setError("Unable to complete sign-in. Return to the login page and try again.");
+        return;
+      }
+      try {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) {
           setError(getAuthErrorMessage(exchangeError, "complete sign-in"));
           return;
         }
+        navigate("/", { replace: true });
+      } catch (requestError) {
+        setError(getAuthErrorMessage(requestError, "complete sign-in"));
       }
-      navigate("/", { replace: true });
     }
     finish();
   }, [navigate]);

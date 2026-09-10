@@ -6,12 +6,14 @@ import {
   DollarSign,
   GitBranch,
   LayoutDashboard,
+  ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 
+import { useOrganization } from "@/contexts/OrganizationContext";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+const baseNavItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/datasets", label: "Datasets", icon: Database },
   { path: "/lineage", label: "Lineage", icon: GitBranch },
@@ -20,7 +22,11 @@ const navItems = [
 
 export default function Sidebar() {
   const location = useLocation();
+  const { organization } = useOrganization();
   const [collapsed, setCollapsed] = useState(false);
+  const navItems = organization?.role === "owner"
+    ? [...baseNavItems, { path: "/admin", label: "Admin", icon: ShieldCheck }]
+    : baseNavItems;
 
   return (
     <aside

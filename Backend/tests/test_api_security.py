@@ -24,6 +24,11 @@ class ApiSecurityTests(unittest.TestCase):
         response = self.client.get("/api/v1/organizations")
         self.assertEqual(response.status_code, 401)
 
+        admin_response = self.client.get(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/admin"
+        )
+        self.assertEqual(admin_response.status_code, 401)
+
     def test_database_ping_is_not_public(self):
         response = self.client.get("/db/ping")
         self.assertEqual(response.status_code, 401)
@@ -46,6 +51,7 @@ class ApiSecurityTests(unittest.TestCase):
         paths = app.openapi()["paths"]
         self.assertNotIn("/datasets", paths)
         self.assertIn("/api/v1/organizations/{organization_id}/datasets", paths)
+        self.assertIn("/api/v1/organizations/{organization_id}/admin", paths)
         self.assertEqual(paths["/api/v1/organizations/{organization_id}/ingestion/dbt/manifest"]["post"]["responses"].get("202", {}).get("description"), "Successful Response")
 
 

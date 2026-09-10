@@ -3,11 +3,22 @@ from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import CurrentUser, get_current_user, set_request_user_context
+from app.auth import (
+    CurrentUser,
+    OrganizationAccess,
+    get_current_user,
+    require_owner,
+    set_request_user_context,
+)
 from app.db import get_db
 from app.models.organization_memberships import OrganizationMembership
 from app.models.organizations import Organization
-from app.schemas.organizations import OrganizationCreate, OrganizationRead
+from app.schemas.organizations import (
+    OrganizationAdminCurrentUserRead,
+    OrganizationAdminRead,
+    OrganizationCreate,
+    OrganizationRead,
+)
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["organizations"])
 
@@ -37,6 +48,42 @@ def list_organizations(
         )
         for organization, role in rows
     ]
+
+
+@router.get("/{organization_id}/admin", response_model=OrganizationAdminRead)
+def get_admin_dashboard(
+    access: OrganizationAccess = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> OrganizationAdminRead:
+    organization = (
+        db.query(Organization)
+        .filter(Organization.id == access.organization_id)
+        .one_or_none()
+    )
+    if organization is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    memberships = (
+        db.query(OrganizationMembership)
+        .filter(OrganizationMembership.organization_id == access.organization_id)
+        .order_by(OrganizationMembership.created_at, OrganizationMembership.user_id)
+        .all()
+    )
+    return OrganizationAdminRead(
+        organization=OrganizationRead(
+            id=organization.id,
+            name=organization.name,
+            slug=organization.slug,
+            role=access.role,
+            created_at=organization.created_at,
+        ),
+        memberships=memberships,
+        current_user=OrganizationAdminCurrentUserRead(
+            id=access.user.id,
+            email=access.user.email,
+            role=access.role,
+        ),
+    )
 
 
 @router.post("", response_model=OrganizationRead, status_code=status.HTTP_201_CREATED)

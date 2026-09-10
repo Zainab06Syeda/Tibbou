@@ -161,3 +161,4 @@ def require_organization_role(*allowed_roles: str):
 require_viewer = require_organization_role("owner", "admin", "operator", "viewer")
 require_operator = require_organization_role("owner", "admin", "operator")
 require_admin = require_organization_role("owner", "admin")
+require_owner = require_organization_role("owner")

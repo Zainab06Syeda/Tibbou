@@ -34,8 +34,8 @@ export default function WorkspaceGate() {
   return (
     <main className="grid min-h-screen place-items-center bg-background p-6">
       <form className="w-full max-w-md rounded-xl border border-border bg-card p-8" onSubmit={submit}>
-        <h1 className="text-xl font-semibold">Create your first workspace</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Workspaces isolate datasets, lineage, costs, and integrations.</p>
+        <h1 className="text-xl font-semibold">No organization membership found</h1>
+        <p className="mt-2 text-sm text-muted-foreground">You are signed in but do not belong to an organization. Create one to continue as its owner.</p>
         <input className="mt-6 w-full rounded-md border border-border bg-background px-3 py-2" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} required placeholder="Organization name" />
         {submitError ? <p className="mt-3 text-sm text-red-300">{submitError}</p> : null}
         <button disabled={submitting} className="mt-4 w-full rounded-md bg-emerald-500 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">

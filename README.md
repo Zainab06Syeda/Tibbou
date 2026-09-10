@@ -29,6 +29,8 @@ Set the values in `Backend/.env` for the PostgreSQL database and Supabase projec
 
 Enable email and password authentication. Set the Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback` as a redirect URL.
 
+Microsoft Entra sign-in is implemented but defaults off. After configuring and verifying the Azure provider in Supabase, set `VITE_ENABLE_ENTRA_SSO=true` in the frontend environment. Keep the Entra client secret only in Entra and Supabase; never place it in frontend variables or Git. Okta and SAML remain deferred.
+
 Use the same Supabase project in the backend and frontend environment files. Keep database credentials and other private values out of Git.
 
 ### Frontend
@@ -77,10 +79,9 @@ python -m unittest discover -s tests -v
 Run the existing frontend checks from `Frontend/tibbou-data-flow`:
 
 ```powershell
+npm test
 npm run typecheck
 npm run lint
 npm run build
 npm audit
 ```
-
-The frontend currently has no separate unit-test script.

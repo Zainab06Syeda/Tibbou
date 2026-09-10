@@ -2,11 +2,9 @@ import { useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { entraOAuthOptions, entraSsoEnabled } from "@/lib/authConfig";
 import { getAuthErrorMessage } from "@/lib/authErrors";
 import { supabase } from "@/lib/supabase";
-
-const entraPresentationRequested = import.meta.env.VITE_ENABLE_ENTRA_SSO === "true";
-const oktaPresentationRequested = import.meta.env.VITE_ENABLE_OKTA_SSO === "true";
 
 export default function Login() {
   const { configured, loading, session } = useAuth();
@@ -61,6 +59,26 @@ export default function Login() {
     }
   }
 
+  async function signInWithEntra() {
+    if (!entraSsoEnabled || pendingRequest.current) return;
+
+    setError("");
+    setNotice("");
+    pendingRequest.current = true;
+    setPending(true);
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth(
+        entraOAuthOptions(window.location.origin),
+      );
+      if (oauthError) setError(getAuthErrorMessage(oauthError, "sign in with Microsoft"));
+    } catch (requestError) {
+      setError(getAuthErrorMessage(requestError, "sign in with Microsoft"));
+    } finally {
+      pendingRequest.current = false;
+      setPending(false);
+    }
+  }
+
   return (
     <main className="grid min-h-screen place-items-center bg-background p-6 text-foreground">
       <section className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-xl">
@@ -69,7 +87,7 @@ export default function Login() {
           {mode === "signIn" ? "Sign in to your workspace" : "Create your account"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Use email and password for the current testing phase. Enterprise SSO is planned for a later phase.
+          Sign in with Microsoft when available, or use email and password.
         </p>
         {!configured ? (
           <p className="mt-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
@@ -136,22 +154,22 @@ export default function Login() {
 
             <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
               <span className="h-px flex-1 bg-border" />
-              Future SSO
+              Or continue with
               <span className="h-px flex-1 bg-border" />
             </div>
             <div className="space-y-2">
-              <button className="w-full cursor-not-allowed rounded-md border border-border px-4 py-2 text-sm text-muted-foreground opacity-70" type="button" disabled>
-                Microsoft Entra ID — Coming soon
+              <button
+                className="w-full rounded-md border border-border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-70"
+                type="button"
+                disabled={!entraSsoEnabled || pending}
+                onClick={entraSsoEnabled ? signInWithEntra : undefined}
+              >
+                {entraSsoEnabled ? "Continue with Microsoft" : "Microsoft Entra ID — Not enabled"}
               </button>
               <button className="w-full cursor-not-allowed rounded-md border border-border px-4 py-2 text-sm text-muted-foreground opacity-70" type="button" disabled>
                 Okta — Coming soon
               </button>
             </div>
-            {entraPresentationRequested || oktaPresentationRequested ? (
-              <p className="mt-3 text-xs text-amber-200">
-                An SSO presentation flag is set, but Phase 1 keeps all SSO providers inactive until their hosted configuration is verified.
-              </p>
-            ) : null}
           </>
         )}
         {error ? <p className="mt-3 text-sm text-red-300" role="alert">{error}</p> : null}

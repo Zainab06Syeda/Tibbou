@@ -39,6 +39,10 @@ export function createOrganization(payload) {
   });
 }
 
+export function getAdminDashboard() {
+  return apiRequest(organizationPath("/admin"));
+}
+
 export function getDatasets() {
   return apiRequest(organizationPath("/datasets"));
 }
