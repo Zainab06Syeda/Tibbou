@@ -27,11 +27,22 @@ Set the values in `Backend/.env` for the PostgreSQL database and Supabase projec
 
 ### Supabase
 
-Enable email and password authentication. Set the Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback` as a redirect URL.
+Enable email and password authentication with **Confirm Email enabled**. Confirmed email is a required rollout prerequisite because organization invitations match the signed-in user's exact email. Set the Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback` as a redirect URL.
 
 Microsoft Entra sign-in is implemented but defaults off. After configuring and verifying the Azure provider in Supabase, set `VITE_ENABLE_ENTRA_SSO=true` in the frontend environment. Keep the Entra client secret only in Entra and Supabase; never place it in frontend variables or Git. Okta and SAML remain deferred.
 
 Use the same Supabase project in the backend and frontend environment files. Keep database credentials and other private values out of Git.
+
+### Organization provisioning
+
+Self-service organization creation is disabled. A trusted platform operator provisions a new customer organization and its initial owner directly in PostgreSQL using one transaction:
+
+1. Verify the owner's existing Supabase `auth.users.id`.
+2. Insert the organization with that user as `created_by`.
+3. Insert the matching `organization_memberships` row with role `owner`.
+4. Verify the organization and exactly one initial owner before committing.
+
+Do not perform this against a hosted database without an approved backup, reviewed SQL, and explicit authorization. After bootstrap, owners and administrators onboard members only through exact-email invitations in the application. Microsoft and email/password users accept invitations through the same flow; organization membership, not provider or domain metadata, grants access.
 
 ### Frontend
 

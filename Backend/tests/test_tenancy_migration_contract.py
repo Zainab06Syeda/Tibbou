@@ -19,9 +19,15 @@ OWNERSHIP_MIGRATION = (
     / "versions"
     / "20260901_120000_finalize_organization_ownership.py"
 )
+INVITATION_MIGRATION = (
+    BACKEND
+    / "alembic"
+    / "versions"
+    / "20260910_120000_add_organization_invitations.py"
+)
 
 
-def offline_sql() -> str:
+def offline_sql(revision_range: str = "20260408_203100:20260818_120000") -> str:
     env = os.environ.copy()
     env["DATABASE_URL"] = "postgresql+psycopg2://localhost/tibbou_offline"
     completed = subprocess.run(
@@ -30,28 +36,7 @@ def offline_sql() -> str:
             "-m",
             "alembic",
             "upgrade",
-            "20260408_203100:20260818_120000",
-            "--sql",
-        ],
-        cwd=BACKEND,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return completed.stdout.lower()
-
-
-def ownership_offline_sql() -> str:
-    env = os.environ.copy()
-    env["DATABASE_URL"] = "postgresql+psycopg2://localhost/tibbou_offline"
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "alembic",
-            "upgrade",
-            "20260818_120000:20260901_120000",
+            revision_range,
             "--sql",
         ],
         cwd=BACKEND,
@@ -179,7 +164,7 @@ class OrganizationOwnershipMigrationContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = OWNERSHIP_MIGRATION.read_text(encoding="utf-8").lower()
-        cls.sql = ownership_offline_sql()
+        cls.sql = offline_sql("20260818_120000:20260901_120000")
 
     def test_revision_extends_the_tenancy_expand_revision(self):
         self.assertIn('revision = "20260901_120000"', self.source)
@@ -241,6 +226,67 @@ class OrganizationOwnershipMigrationContractTests(unittest.TestCase):
         self.assertIn("postgresql_not_valid=true", self.source)
         self.assertNotIn("organization_id = null", self.source)
         self.assertNotIn("organization_id=null", self.source)
+
+
+class OrganizationInvitationMigrationContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = INVITATION_MIGRATION.read_text(encoding="utf-8").lower()
+        cls.sql = offline_sql("20260901_120000:20260910_120000")
+
+    def test_revision_is_additive_and_mutates_no_existing_rows(self):
+        self.assertIn('revision = "20260910_120000"', self.source)
+        self.assertIn('down_revision = "20260901_120000"', self.source)
+        self.assertNotIn("update public.", self.source)
+        self.assertNotIn("delete from public.", self.source)
+
+    def test_invitation_constraints_and_delete_actions_are_narrow(self):
+        self.assertIn("uq_organization_invitations_org_email", self.sql)
+        self.assertIn("ck_organization_invitations_email", self.sql)
+        self.assertIn(
+            "foreign key(invited_by) references auth.users (id) on delete cascade",
+            self.sql,
+        )
+        self.assertIn(
+            "foreign key(organization_id) references organizations (id) on delete restrict",
+            self.sql,
+        )
+
+    def test_invitation_rls_and_data_api_revocations_are_present(self):
+        self.assertIn(
+            "alter table organization_invitations force row level security", self.sql
+        )
+        self.assertIn(
+            "revoke all on organization_invitations from anon, authenticated, service_role",
+            self.sql,
+        )
+        self.assertIn(
+            "grant select, insert, delete on organization_invitations to tibbou_runtime",
+            self.sql,
+        )
+        self.assertNotIn("grant select on organization_invitations to authenticated", self.sql)
+
+    def test_private_functions_support_inherited_runtime_logins(self):
+        self.assertGreaterEqual(
+            self.sql.count(
+                "pg_has_role(session_user, 'tibbou_runtime', 'member')"
+            ),
+            2,
+        )
+        self.assertNotIn("session_user = 'tibbou_runtime'", self.sql)
+        self.assertIn("security definer set search_path = ''", self.sql)
+        self.assertIn(
+            "revoke all on function private.list_request_user_organization_invitations() "
+            "from public, anon, authenticated, service_role",
+            self.sql,
+        )
+
+    def test_invitee_summary_is_narrow_and_organization_policy_is_unchanged(self):
+        signature = "returns table (\n          id uuid,\n          organization_id uuid,\n          organization_name text,\n          organization_slug text,\n          role text,\n          expires_at timestamptz"
+        self.assertIn(signature, self.sql)
+        self.assertNotIn("drop policy organizations_read", self.sql)
+        self.assertNotIn("create policy organizations_read", self.sql)
+        self.assertIn("private.can_accept_organization_invitation", self.sql)
 
 
 if __name__ == "__main__":

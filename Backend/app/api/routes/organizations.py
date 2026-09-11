@@ -1,22 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from psycopg2.errors import UniqueViolation
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import (
     CurrentUser,
     OrganizationAccess,
     get_current_user,
-    require_owner,
+    require_admin,
     set_request_user_context,
 )
 from app.db import get_db
+from app.models.organization_invitations import OrganizationInvitation
 from app.models.organization_memberships import OrganizationMembership
 from app.models.organizations import Organization
 from app.schemas.organizations import (
     OrganizationAdminCurrentUserRead,
     OrganizationAdminRead,
-    OrganizationCreate,
     OrganizationRead,
 )
 
@@ -52,7 +50,7 @@ def list_organizations(
 
 @router.get("/{organization_id}/admin", response_model=OrganizationAdminRead)
 def get_admin_dashboard(
-    access: OrganizationAccess = Depends(require_owner),
+    access: OrganizationAccess = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> OrganizationAdminRead:
     organization = (
@@ -69,6 +67,12 @@ def get_admin_dashboard(
         .order_by(OrganizationMembership.created_at, OrganizationMembership.user_id)
         .all()
     )
+    invitations = (
+        db.query(OrganizationInvitation)
+        .filter(OrganizationInvitation.organization_id == access.organization_id)
+        .order_by(OrganizationInvitation.created_at, OrganizationInvitation.id)
+        .all()
+    )
     return OrganizationAdminRead(
         organization=OrganizationRead(
             id=organization.id,
@@ -78,48 +82,10 @@ def get_admin_dashboard(
             created_at=organization.created_at,
         ),
         memberships=memberships,
+        invitations=invitations,
         current_user=OrganizationAdminCurrentUserRead(
             id=access.user.id,
             email=access.user.email,
             role=access.role,
         ),
-    )
-
-
-@router.post("", response_model=OrganizationRead, status_code=status.HTTP_201_CREATED)
-def create_organization(
-    payload: OrganizationCreate,
-    user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> OrganizationRead:
-    set_request_user_context(db, user.id)
-    organization = Organization(name=payload.name.strip(), slug=payload.slug, created_by=user.id)
-    try:
-        db.add(organization)
-        db.flush()
-        db.add(
-            OrganizationMembership(
-                organization_id=organization.id, user_id=user.id, role="owner"
-            )
-        )
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-        if isinstance(exc.orig, UniqueViolation) and constraint_name == "organizations_slug_key":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Organization slug exists",
-            ) from exc
-        raise
-    # Commit clears SET LOCAL context. Restore the verified user before the
-    # RLS-protected refresh starts a new transaction.
-    set_request_user_context(db, user.id)
-    db.refresh(organization)
-    return OrganizationRead(
-        id=organization.id,
-        name=organization.name,
-        slug=organization.slug,
-        role="owner",
-        created_at=organization.created_at,
     )

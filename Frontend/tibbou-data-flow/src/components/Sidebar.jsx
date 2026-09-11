@@ -24,7 +24,7 @@ export default function Sidebar() {
   const location = useLocation();
   const { organization } = useOrganization();
   const [collapsed, setCollapsed] = useState(false);
-  const navItems = organization?.role === "owner"
+  const navItems = ["owner", "admin"].includes(organization?.role)
     ? [...baseNavItems, { path: "/admin", label: "Admin", icon: ShieldCheck }]
     : baseNavItems;
 
