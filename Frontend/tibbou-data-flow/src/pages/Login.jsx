@@ -80,8 +80,48 @@ export default function Login() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background p-6 text-foreground">
-      <section className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-xl">
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-background p-6 text-foreground">
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div
+          className="absolute rounded-full"
+          style={{
+            top: "-60px",
+            right: "-80px",
+            width: "420px",
+            height: "420px",
+            background: "rgba(6,182,212,0.08)",
+            filter: "blur(90px)",
+            animation: "floatOrb 16s ease-in-out infinite",
+          }}
+        />
+        <div
+          className="absolute rounded-full"
+          style={{
+            top: "40%",
+            left: "-60px",
+            width: "320px",
+            height: "320px",
+            background: "rgba(16,185,129,0.06)",
+            filter: "blur(80px)",
+            animation: "floatOrb 20s ease-in-out infinite",
+            animationDelay: "-7s",
+          }}
+        />
+        <div
+          className="absolute rounded-full"
+          style={{
+            bottom: "80px",
+            right: "30%",
+            width: "260px",
+            height: "260px",
+            background: "rgba(245,158,11,0.05)",
+            filter: "blur(70px)",
+            animation: "floatOrb 14s ease-in-out infinite",
+            animationDelay: "-3s",
+          }}
+        />
+      </div>
+      <section className="relative w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-xl">
         <p className="text-sm font-semibold text-emerald-400">Tibbou</p>
         <h1 className="mt-2 text-2xl font-semibold">
           {mode === "signIn" ? "Sign in to your workspace" : "Create your account"}
