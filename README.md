@@ -1,17 +1,26 @@
 # Tibbou
 
-## Purpose
+## What Tibbou does
 
-Tibbou is a tenant-aware service for viewing data lineage and attributing Snowflake query usage to datasets. It includes a browser interface, an API, PostgreSQL storage, and a database-backed ingestion worker.
+Tibbou helps teams view data lineage and understand Snowflake usage and cost by dataset. It has a web interface, a FastAPI backend, PostgreSQL storage, Supabase authentication, and an ingestion worker for dbt and Snowflake data.
 
-## Technologies
+## Repository structure
+
+- `Frontend/` contains the React application.
+- `Backend/` contains the API, worker, and backend tests.
+- `Database/` contains Alembic migrations and the RLS SQL test scenario.
+- `Documentation/` contains the [database schema](<Documentation/Diagrams (Cap 2)/database-schema.md>).
+- `Testing/` contains the [test index and detailed evidence](Testing/README.md).
+- `README.md` and `CONTRIBUTIONS.md` at the root.
+
+## Tech Stack
 
 - Frontend: React, Vite, Tailwind CSS, and Supabase JS
 - Backend: FastAPI, SQLAlchemy, Alembic, and Pydantic
 - Database and authentication: PostgreSQL and Supabase Auth
-- Data integration: dbt `manifest.json` artifacts and the Snowflake Python connector
+- Data integration: dbt `manifest.json` files and the Snowflake Python connector
 
-## Installation and setup
+## Installation
 
 ### Backend
 
@@ -23,26 +32,17 @@ pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
-Set the values in `Backend/.env` for the PostgreSQL database and Supabase project used for local development.
+Set the local PostgreSQL and Supabase values in `Backend/.env`.
 
-### Supabase
+### Database
 
-Enable email and password authentication with **Confirm Email enabled**. Confirmed email is a required rollout prerequisite because organization invitations match the signed-in user's exact email. Set the Site URL to `http://localhost:5173` and allow `http://localhost:5173/auth/callback` as a redirect URL.
+With the backend virtual environment active, run Alembic from the repository root:
 
-Microsoft Entra sign-in is implemented but defaults off. After configuring and verifying the Azure provider in Supabase, set `VITE_ENABLE_ENTRA_SSO=true` in the frontend environment. Keep the Entra client secret only in Entra and Supabase; never place it in frontend variables or Git. Okta and SAML remain deferred.
+```powershell
+python -m alembic -c Database\alembic.ini upgrade head
+```
 
-Use the same Supabase project in the backend and frontend environment files. Keep database credentials and other private values out of Git.
-
-### Organization provisioning
-
-Self-service organization creation is disabled. A trusted platform operator provisions a new customer organization and its initial owner directly in PostgreSQL using one transaction:
-
-1. Verify the owner's existing Supabase `auth.users.id`.
-2. Insert the organization with that user as `created_by`.
-3. Insert the matching `organization_memberships` row with role `owner`.
-4. Verify the organization and exactly one initial owner before committing.
-
-Do not perform this against a hosted database without an approved backup, reviewed SQL, and explicit authorization. After bootstrap, owners and administrators onboard members only through exact-email invitations in the application. Microsoft and email/password users accept invitations through the same flow; organization membership, not provider or domain metadata, grants access.
+Only run migrations against the database you intend to update. The database design is shown in [Documentation/Diagrams (Cap 2)/database-schema.md](<Documentation/Diagrams (Cap 2)/database-schema.md>).
 
 ### Frontend
 
@@ -52,18 +52,26 @@ npm install
 Copy-Item .env.example .env
 ```
 
-Set the values in `Frontend/tibbou-data-flow/.env` for the API and Supabase project used for local development.
+Set the API and Supabase values in `Frontend/tibbou-data-flow/.env`.
+
+### Supabase authentication
+
+Use the same Supabase project in both environment files. Email confirmation must be enabled because invitations match the signed-in user's email.
+
+Microsoft Entra sign-in is available but disabled by default. After the Azure provider is configured in Supabase, set `VITE_ENABLE_ENTRA_SSO=true` in the frontend environment. Keep the Entra client secret in Entra and Supabase, not in the frontend or Git.
+
+Self-service organization creation is disabled. A trusted operator creates the first organization and owner. Owners and administrators can then invite members by exact email address. Organization membership controls access.
 
 ## Run the application
 
-Start the backend API from `Backend`:
+Start the API from `Backend`:
 
 ```powershell
 .venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 ```
 
-Queued ingestion requires a second backend process:
+Start the ingestion worker in a second terminal from `Backend`:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -80,19 +88,18 @@ Open the local URL printed by Vite.
 
 ## Testing
 
-Run the backend test suite from `Backend`:
+The automated results were verified on September 13, 2026. Previous manual and integration results are labeled separately. See [Testing/README.md](Testing/README.md) for the full test index and evidence.
 
-```powershell
-.venv\Scripts\Activate.ps1
-python -m unittest discover -s tests -v
-```
-
-Run the existing frontend checks from `Frontend/tibbou-data-flow`:
-
-```powershell
-npm test
-npm run typecheck
-npm run lint
-npm run build
-npm audit
-```
+| Area | What and why | Command used | Actual result | Evidence |
+| --- | --- | --- | --- | --- |
+| Authentication | Accepted ES256 tokens, rejected shared-secret tokens, and handled JWKS failure safely. This protects API sessions. | `cd Backend; python -m unittest discover -s tests -v` | 3 authentication tests passed. | [`test_auth.py`](Backend/tests/test_auth.py) |
+| Microsoft SSO and frontend tests | Checked the disabled default, Azure settings, PKCE callback, and provider errors. Manual sign-in checked the real flow. | `npm test` and manual browser sign-in | 3 automated tests passed. In previous manual testing, an existing Microsoft user signed in, and a new Entra user reached the expected no-membership state. | [`authConfig.test.js`](Frontend/tibbou-data-flow/test/authConfig.test.js) and [detailed evidence](Testing/README.md) |
+| Organization invitations | Checked role limits, email matching, private visibility, atomic acceptance, and rollback. | `cd Backend; python -m unittest discover -s tests -v` | 10 tests passed. | [`test_organization_invitations.py`](Backend/tests/test_organization_invitations.py) |
+| Admin access | Checked owner and admin access, blocked lower roles, and hid other organizations. | `cd Backend; python -m unittest discover -s tests -v` | 3 tests passed. | [`test_admin_dashboard.py`](Backend/tests/test_admin_dashboard.py) |
+| API security | Checked bearer-token requirements, private database health, upload limits, and tenant-scoped routes. | `cd Backend; python -m unittest discover -s tests -v` | 5 tests passed. | [`test_api_security.py`](Backend/tests/test_api_security.py) |
+| Migration contracts | Checked revision order, safe constraints, RLS rules, grants, and rollback behavior. | `cd Backend; python -m unittest discover -s tests -v` | 21 tests passed. Alembic reported `20260910_120000` as the head. | [`test_tenancy_migration_contract.py`](Backend/tests/test_tenancy_migration_contract.py) |
+| RLS and organization isolation | Checked migration RLS contracts. Runtime tests require an isolated local Supabase database. | Backend test command | Contract tests passed. The current runtime rerun was skipped because the required local test settings were absent. A prior isolated run passed 10/10. | [`test_tenancy_rls_integration.py`](Backend/tests/test_tenancy_rls_integration.py) and [RLS SQL scenario](Database/tests/tenancy_rls_scenarios.sql) |
+| Lint | Checked frontend source for configured ESLint errors. | `npm run lint` | Passed. | [`eslint.config.js`](Frontend/tibbou-data-flow/eslint.config.js) |
+| Type checking | Checked JavaScript and JSX types without writing files. | `npm run typecheck` | Passed. | [`jsconfig.json`](Frontend/tibbou-data-flow/jsconfig.json) |
+| Build | Checked that Vite creates a production build. | `npm run build` | Passed. | [`package.json`](Frontend/tibbou-data-flow/package.json) |
+| Dependency audit | Checked installed frontend packages for known npm vulnerabilities. | `npm audit` | 0 vulnerabilities found. | [`package-lock.json`](Frontend/tibbou-data-flow/package-lock.json) |
