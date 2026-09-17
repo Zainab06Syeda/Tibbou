@@ -6,6 +6,7 @@ import WorkspaceGate from "@/components/WorkspaceGate";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import PageNotFound from "@/lib/PageNotFound";
+import AdminDashboard from "@/pages/AdminDashboard";
 import CostTracking from "@/pages/CostTracking";
 import Dashboard from "@/pages/Dashboard";
 import Datasets from "@/pages/Datasets";
@@ -27,6 +28,7 @@ export default function App() {
                 <Route path="/datasets" element={<Datasets />} />
                 <Route path="/lineage" element={<Lineage />} />
                 <Route path="/costs" element={<CostTracking />} />
+                <Route path="/admin" element={<AdminDashboard />} />
               </Route>
             </Route>
           </Route>

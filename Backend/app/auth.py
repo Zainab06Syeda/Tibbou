@@ -116,11 +116,20 @@ def get_current_user(
     return CurrentUser(id=user_id, email=claims.get("email"), session_id=session_id)
 
 
-def set_request_user_context(db: Session, user_id: UUID) -> None:
+def set_request_user_context(
+    db: Session, user_id: UUID, email: str | None = None
+) -> None:
     db.execute(
-        text("select set_config('app.current_user_id', :user_id, true)"),
-        {"user_id": str(user_id)},
+        text(
+            "select set_config('app.current_user_id', :user_id, true), "
+            "set_config('app.current_user_email', :email, true)"
+        ),
+        {"user_id": str(user_id), "email": normalize_email(email)},
     )
+
+
+def normalize_email(email: str | None) -> str:
+    return email.strip().lower() if isinstance(email, str) else ""
 
 
 def require_organization_role(*allowed_roles: str):
@@ -161,3 +170,4 @@ def require_organization_role(*allowed_roles: str):
 require_viewer = require_organization_role("owner", "admin", "operator", "viewer")
 require_operator = require_organization_role("owner", "admin", "operator")
 require_admin = require_organization_role("owner", "admin")
+require_owner = require_organization_role("owner")

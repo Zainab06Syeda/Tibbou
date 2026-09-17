@@ -31,12 +31,32 @@ export function getOrganizations() {
   return apiRequest("/api/v1/organizations");
 }
 
-export function createOrganization(payload) {
-  return apiRequest("/api/v1/organizations", {
+export function getInvitations() {
+  return apiRequest("/api/v1/invitations");
+}
+
+export function acceptInvitation(invitationId) {
+  return apiRequest(`/api/v1/invitations/${encodeURIComponent(invitationId)}/accept`, {
+    method: "POST",
+  });
+}
+
+export function createInvitation(payload) {
+  return apiRequest(organizationPath("/invitations"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export function deleteInvitation(invitationId) {
+  return apiRequest(organizationPath(`/invitations/${encodeURIComponent(invitationId)}`), {
+    method: "DELETE",
+  });
+}
+
+export function getAdminDashboard() {
+  return apiRequest(organizationPath("/admin"));
 }
 
 export function getDatasets() {

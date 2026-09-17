@@ -24,6 +24,22 @@ class ApiSecurityTests(unittest.TestCase):
         response = self.client.get("/api/v1/organizations")
         self.assertEqual(response.status_code, 401)
 
+        admin_response = self.client.get(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/admin"
+        )
+        self.assertEqual(admin_response.status_code, 401)
+        invitation_response = self.client.get("/api/v1/invitations")
+        self.assertEqual(invitation_response.status_code, 401)
+        accept_response = self.client.post(
+            "/api/v1/invitations/00000000-0000-0000-0000-000000000002/accept"
+        )
+        self.assertEqual(accept_response.status_code, 401)
+        create_invitation_response = self.client.post(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/invitations",
+            json={"email": "member@example.com", "role": "viewer"},
+        )
+        self.assertEqual(create_invitation_response.status_code, 401)
+
     def test_database_ping_is_not_public(self):
         response = self.client.get("/db/ping")
         self.assertEqual(response.status_code, 401)
@@ -46,6 +62,10 @@ class ApiSecurityTests(unittest.TestCase):
         paths = app.openapi()["paths"]
         self.assertNotIn("/datasets", paths)
         self.assertIn("/api/v1/organizations/{organization_id}/datasets", paths)
+        self.assertIn("/api/v1/organizations/{organization_id}/admin", paths)
+        self.assertIn("/api/v1/invitations", paths)
+        self.assertIn("/api/v1/invitations/{invitation_id}/accept", paths)
+        self.assertNotIn("post", paths["/api/v1/organizations"])
         self.assertEqual(paths["/api/v1/organizations/{organization_id}/ingestion/dbt/manifest"]["post"]["responses"].get("202", {}).get("description"), "Successful Response")
 
 

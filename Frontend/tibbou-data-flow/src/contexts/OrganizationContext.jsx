@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { createOrganization, getOrganizations } from "@/api/tibbou";
+import {
+  acceptInvitation as acceptInvitationRequest,
+  getInvitations,
+  getOrganizations,
+} from "@/api/tibbou";
 import { useAuth } from "@/contexts/AuthContext";
 
 const OrganizationContext = createContext(null);
@@ -10,6 +14,7 @@ export function OrganizationProvider({ children }) {
   const { session } = useAuth();
   const [organizations, setOrganizations] = useState([]);
   const [organization, setOrganization] = useState(null);
+  const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(Boolean(session));
   const [error, setError] = useState("");
 
@@ -27,6 +32,7 @@ export function OrganizationProvider({ children }) {
       setOrganizations(rows);
       setOrganization(selected);
       if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
+      setInvitations(selected ? [] : await getInvitations());
       setError("");
     } catch (requestError) {
       setError(requestError.message);
@@ -40,6 +46,7 @@ export function OrganizationProvider({ children }) {
     else {
       setOrganizations([]);
       setOrganization(null);
+      setInvitations([]);
       setLoading(false);
     }
   }, [session]);
@@ -52,15 +59,15 @@ export function OrganizationProvider({ children }) {
     }
   }
 
-  async function createWorkspace(payload) {
-    const created = await createOrganization(payload);
-    await refresh(created.id);
-    return created;
+  async function acceptInvitation(id) {
+    const joined = await acceptInvitationRequest(id);
+    await refresh(joined.id);
+    return joined;
   }
 
   const value = useMemo(
-    () => ({ organizations, organization, loading, error, selectOrganization, createWorkspace }),
-    [organizations, organization, loading, error],
+    () => ({ organizations, organization, invitations, loading, error, selectOrganization, acceptInvitation }),
+    [organizations, organization, invitations, loading, error],
   );
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 }

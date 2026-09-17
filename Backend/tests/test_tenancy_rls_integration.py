@@ -17,10 +17,13 @@ DATABASE_ENV = "TIBBOU_PHASE2B_DATABASE_URL"
 LOGIN_ROLE = "tibbou_phase2b_api_test"
 USER_ONE = "11000000-0000-0000-0000-000000000001"
 USER_TWO = "11000000-0000-0000-0000-000000000002"
+USER_THREE = "11000000-0000-0000-0000-000000000003"
+USER_FOUR = "11000000-0000-0000-0000-000000000004"
 STALE_USER = "11000000-0000-0000-0000-000000000099"
 ORG_ONE = "21000000-0000-0000-0000-000000000001"
 ORG_TWO = "21000000-0000-0000-0000-000000000002"
 BACKEND = Path(__file__).resolve().parents[1]
+ALEMBIC_CONFIG = BACKEND.parent / "Database" / "alembic.ini"
 EXPAND_REVISION = "20260818_120000"
 OWNERSHIP_REVISION = "20260901_120000"
 MIGRATION_TIMEOUTS = (
@@ -112,6 +115,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                             sys.executable,
                             "-m",
                             "alembic",
+                            "-c",
+                            str(ALEMBIC_CONFIG),
                             "upgrade",
                             "20260408_203100",
                         ],
@@ -148,6 +153,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                             sys.executable,
                             "-m",
                             "alembic",
+                            "-c",
+                            str(ALEMBIC_CONFIG),
                             "upgrade",
                             "20260818_120000",
                         ],
@@ -255,6 +262,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "alembic",
+                    "-c",
+                    str(ALEMBIC_CONFIG),
                     "upgrade",
                     "20260408_203100",
                 ],
@@ -309,6 +318,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "alembic",
+                    "-c",
+                    str(ALEMBIC_CONFIG),
                     "upgrade",
                     "20260818_120000",
                 ],
@@ -472,7 +483,15 @@ class OrganizationOwnershipIntegrationTests(unittest.TestCase):
         env = os.environ.copy()
         env["DATABASE_URL"] = local_database_url(owner_config, database)
         return subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", revision],
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "-c",
+                str(ALEMBIC_CONFIG),
+                "upgrade",
+                revision,
+            ],
             cwd=BACKEND,
             env=env,
             check=check,
@@ -698,8 +717,8 @@ class OrganizationOwnershipIntegrationTests(unittest.TestCase):
             with psycopg2.connect(**variant_config) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "insert into auth.users (id) values (%s), (%s)",
-                        (USER_ONE, USER_TWO),
+                        "insert into auth.users (id) values (%s), (%s), (%s), (%s)",
+                        (USER_ONE, USER_TWO, USER_THREE, USER_FOUR),
                     )
                     cursor.execute(
                         "insert into public.organizations (id, name, slug, created_by) values "
@@ -711,8 +730,9 @@ class OrganizationOwnershipIntegrationTests(unittest.TestCase):
                         "insert into public.organization_memberships "
                         "(id, organization_id, user_id, role) values "
                         "('31000000-0000-0000-0000-000000000001', %s, %s, 'owner'), "
-                        "('31000000-0000-0000-0000-000000000002', %s, %s, 'owner')",
-                        (ORG_ONE, USER_ONE, ORG_TWO, USER_TWO),
+                        "('31000000-0000-0000-0000-000000000002', %s, %s, 'owner'), "
+                        "('31000000-0000-0000-0000-000000000004', %s, %s, 'admin')",
+                        (ORG_ONE, USER_ONE, ORG_TWO, USER_TWO, ORG_ONE, USER_FOUR),
                     )
 
             admin = psycopg2.connect(**owner_config)
@@ -741,6 +761,111 @@ class OrganizationOwnershipIntegrationTests(unittest.TestCase):
                     password=login_password,
                     sslmode="disable",
                 )
+
+            invitation_id = "41000000-0000-0000-0000-000000000001"
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(
+                    cursor, USER_ONE, ORG_ONE, "owner@example.com"
+                )
+                cursor.execute(
+                    "insert into public.organization_invitations "
+                    "(id, organization_id, email, role, invited_by) "
+                    "values (%s, %s, 'invitee@example.com', 'viewer', %s)",
+                    (invitation_id, ORG_ONE, USER_ONE),
+                )
+
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(
+                    cursor, USER_TWO, ORG_TWO, "other@example.com"
+                )
+                cursor.execute(
+                    "select count(*) from public.organization_invitations where id = %s",
+                    (invitation_id,),
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
+                cursor.execute(
+                    "delete from public.organization_invitations where id = %s",
+                    (invitation_id,),
+                )
+                self.assertEqual(cursor.rowcount, 0)
+
+            connection = connect_login()
+            try:
+                with connection.cursor() as cursor:
+                    TenancyRlsIntegrationTests.set_context(
+                        cursor, USER_TWO, "", "other@example.com"
+                    )
+                    with self.assertRaises(psycopg2.errors.InsufficientPrivilege):
+                        cursor.execute(
+                            "insert into public.organization_memberships "
+                            "(id, organization_id, user_id, role) "
+                            "values ('31000000-0000-0000-0000-000000000099', %s, %s, 'viewer')",
+                            (ORG_ONE, USER_TWO),
+                        )
+            finally:
+                connection.rollback()
+                connection.close()
+
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(
+                    cursor, USER_THREE, "", "Invitee@Example.com"
+                )
+                cursor.execute(
+                    "select organization_id::text, organization_name, organization_slug, role "
+                    "from private.list_request_user_organization_invitations()"
+                )
+                self.assertEqual(
+                    cursor.fetchall(),
+                    [(ORG_ONE, "Local One", "local-one", "viewer")],
+                )
+                cursor.execute(
+                    "select count(*) from public.organizations where id = %s", (ORG_ONE,)
+                )
+                self.assertEqual(cursor.fetchone()[0], 0)
+                cursor.execute(
+                    "insert into public.organization_memberships "
+                    "(id, organization_id, user_id, role) "
+                    "values ('31000000-0000-0000-0000-000000000003', %s, %s, 'viewer')",
+                    (ORG_ONE, USER_THREE),
+                )
+                cursor.execute(
+                    "delete from public.organization_invitations where id = %s",
+                    (invitation_id,),
+                )
+                self.assertEqual(cursor.rowcount, 1)
+                cursor.execute(
+                    "select set_config('app.current_organization_id', %s, true)", (ORG_ONE,)
+                )
+                cursor.execute(
+                    "select name from public.organizations where id = %s", (ORG_ONE,)
+                )
+                self.assertEqual(cursor.fetchone()[0], "Local One")
+
+            cascading_invitation_id = "41000000-0000-0000-0000-000000000004"
+            with connect_login() as connection, connection.cursor() as cursor:
+                TenancyRlsIntegrationTests.set_context(
+                    cursor, USER_FOUR, ORG_ONE, "departing-admin@example.com"
+                )
+                cursor.execute(
+                    "insert into public.organization_invitations "
+                    "(id, organization_id, email, role, invited_by) "
+                    "values (%s, %s, 'pending@example.com', 'viewer', %s)",
+                    (cascading_invitation_id, ORG_ONE, USER_FOUR),
+                )
+
+            with psycopg2.connect(**variant_config) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "delete from public.organization_memberships "
+                        "where organization_id = %s and user_id = %s",
+                        (ORG_ONE, USER_FOUR),
+                    )
+                    cursor.execute("delete from auth.users where id = %s", (USER_FOUR,))
+                    cursor.execute(
+                        "select count(*) from public.organization_invitations where id = %s",
+                        (cascading_invitation_id,),
+                    )
+                    self.assertEqual(cursor.fetchone()[0], 0)
 
             sentinel_id = "61000000-0000-0000-0000-000000000099"
             with connect_login() as connection, connection.cursor() as cursor:
@@ -861,13 +986,18 @@ class TenancyRlsIntegrationTests(unittest.TestCase):
         )
 
     @staticmethod
-    def set_context(cursor, user_id: str, organization_id: str) -> None:
+    def set_context(
+        cursor, user_id: str, organization_id: str, email: str = ""
+    ) -> None:
         cursor.execute(
             "select set_config('app.current_user_id', %s, true)", (user_id,)
         )
         cursor.execute(
             "select set_config('app.current_organization_id', %s, true)",
             (organization_id,),
+        )
+        cursor.execute(
+            "select set_config('app.current_user_email', %s, true)", (email,)
         )
 
     def test_real_login_uses_forced_rls_and_authorized_writes(self):

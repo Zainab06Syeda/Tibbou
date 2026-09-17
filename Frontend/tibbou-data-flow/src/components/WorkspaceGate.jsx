@@ -2,46 +2,64 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function WorkspaceGate() {
-  const { organization, loading, error, createWorkspace } = useOrganization();
-  const [name, setName] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const { user, signOut } = useAuth();
+  const { organization, invitations, loading, error, acceptInvitation } = useOrganization();
+  const [joiningId, setJoiningId] = useState(null);
+  const [joinError, setJoinError] = useState("");
   if (loading) return <div className="grid min-h-screen place-items-center">Loading workspace…</div>;
   if (error) return <div className="grid min-h-screen place-items-center text-red-300">{error}</div>;
   if (organization) return <Outlet />;
 
-  async function submit(event) {
-    event.preventDefault();
-    const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    if (!slug) {
-      setSubmitError("Enter a workspace name containing letters or numbers.");
-      return;
-    }
-
-    setSubmitError("");
-    setSubmitting(true);
+  async function join(id) {
+    setJoinError("");
+    setJoiningId(id);
     try {
-      await createWorkspace({ name, slug });
+      await acceptInvitation(id);
     } catch (requestError) {
-      setSubmitError(requestError.message || "Failed to create workspace.");
+      setJoinError(requestError.message || "Failed to join organization.");
     } finally {
-      setSubmitting(false);
+      setJoiningId(null);
     }
   }
 
   return (
     <main className="grid min-h-screen place-items-center bg-background p-6">
-      <form className="w-full max-w-md rounded-xl border border-border bg-card p-8" onSubmit={submit}>
-        <h1 className="text-xl font-semibold">Create your first workspace</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Workspaces isolate datasets, lineage, costs, and integrations.</p>
-        <input className="mt-6 w-full rounded-md border border-border bg-background px-3 py-2" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} required placeholder="Organization name" />
-        {submitError ? <p className="mt-3 text-sm text-red-300">{submitError}</p> : null}
-        <button disabled={submitting} className="mt-4 w-full rounded-md bg-emerald-500 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60">
-          {submitting ? "Creating workspace..." : "Create workspace"}
+      <section className="w-full max-w-lg rounded-xl border border-border bg-card p-8">
+        <h1 className="text-xl font-semibold">No organization membership found</h1>
+        {invitations.length ? (
+          <>
+            <p className="mt-2 text-sm text-muted-foreground">Accept an approved invitation to join an organization.</p>
+            <div className="mt-6 space-y-3">
+              {invitations.map((invitation) => (
+                <article key={invitation.id} className="rounded-lg border border-border bg-background p-4">
+                  <h2 className="font-medium">{invitation.organization_name}</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">{invitation.organization_slug} · {invitation.role}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Expires {new Date(invitation.expires_at).toLocaleString()}</p>
+                  <button
+                    type="button"
+                    disabled={joiningId !== null}
+                    onClick={() => join(invitation.id)}
+                    className="mt-4 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {joiningId === invitation.id ? "Joining…" : "Join organization"}
+                  </button>
+                </article>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            No organization access has been approved. Ask an owner or administrator to invite {user?.email || "your signed-in email"}.
+          </p>
+        )}
+        {joinError ? <p className="mt-4 text-sm text-red-300">{joinError}</p> : null}
+        <button type="button" onClick={signOut} className="mt-6 text-sm text-muted-foreground underline hover:text-foreground">
+          Sign out
         </button>
-      </form>
+      </section>
     </main>
   );
 }
