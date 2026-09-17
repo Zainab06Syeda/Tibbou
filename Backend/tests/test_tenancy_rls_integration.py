@@ -23,6 +23,7 @@ STALE_USER = "11000000-0000-0000-0000-000000000099"
 ORG_ONE = "21000000-0000-0000-0000-000000000001"
 ORG_TWO = "21000000-0000-0000-0000-000000000002"
 BACKEND = Path(__file__).resolve().parents[1]
+ALEMBIC_CONFIG = BACKEND.parent / "Database" / "alembic.ini"
 EXPAND_REVISION = "20260818_120000"
 OWNERSHIP_REVISION = "20260901_120000"
 MIGRATION_TIMEOUTS = (
@@ -114,6 +115,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                             sys.executable,
                             "-m",
                             "alembic",
+                            "-c",
+                            str(ALEMBIC_CONFIG),
                             "upgrade",
                             "20260408_203100",
                         ],
@@ -150,6 +153,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                             sys.executable,
                             "-m",
                             "alembic",
+                            "-c",
+                            str(ALEMBIC_CONFIG),
                             "upgrade",
                             "20260818_120000",
                         ],
@@ -257,6 +262,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "alembic",
+                    "-c",
+                    str(ALEMBIC_CONFIG),
                     "upgrade",
                     "20260408_203100",
                 ],
@@ -311,6 +318,8 @@ class TenancyMigrationBaselineVariantsIntegrationTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "alembic",
+                    "-c",
+                    str(ALEMBIC_CONFIG),
                     "upgrade",
                     "20260818_120000",
                 ],
@@ -474,7 +483,15 @@ class OrganizationOwnershipIntegrationTests(unittest.TestCase):
         env = os.environ.copy()
         env["DATABASE_URL"] = local_database_url(owner_config, database)
         return subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", revision],
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "-c",
+                str(ALEMBIC_CONFIG),
+                "upgrade",
+                revision,
+            ],
             cwd=BACKEND,
             env=env,
             check=check,

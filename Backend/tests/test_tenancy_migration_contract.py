@@ -7,20 +7,22 @@ from pathlib import Path
 
 
 BACKEND = Path(__file__).resolve().parents[1]
+DATABASE = BACKEND.parent / "Database"
+ALEMBIC_CONFIG = DATABASE / "alembic.ini"
 MIGRATION = (
-    BACKEND
+    DATABASE
     / "alembic"
     / "versions"
     / "20260818_120000_add_tenancy_auth_and_ingestion.py"
 )
 OWNERSHIP_MIGRATION = (
-    BACKEND
+    DATABASE
     / "alembic"
     / "versions"
     / "20260901_120000_finalize_organization_ownership.py"
 )
 INVITATION_MIGRATION = (
-    BACKEND
+    DATABASE
     / "alembic"
     / "versions"
     / "20260910_120000_add_organization_invitations.py"
@@ -35,6 +37,8 @@ def offline_sql(revision_range: str = "20260408_203100:20260818_120000") -> str:
             sys.executable,
             "-m",
             "alembic",
+            "-c",
+            str(ALEMBIC_CONFIG),
             "upgrade",
             revision_range,
             "--sql",
