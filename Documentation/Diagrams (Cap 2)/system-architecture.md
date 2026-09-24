@@ -56,9 +56,6 @@ dbt is an uploaded metadata source, not an online service called by Tibbou. Snow
 
 - The browser uses Supabase only for authentication. Business data goes through FastAPI.
 - FastAPI validates the Supabase access token and resolves access from organization memberships. Signing in alone does not grant organization access.
-- The Admin Dashboard shows organization information, memberships, and invitations. Membership editing is not implemented there.
-- The worker polls queued jobs. There is no implemented periodic scheduler beyond that polling loop.
-- Microsoft sign-in is shown because the code supports it, but the documentation does not claim that the hosted Microsoft provider is configured.
 
 ## Sources
 
