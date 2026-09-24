@@ -13,7 +13,7 @@ class SnowflakeConnection(Base):
     )
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(
-        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False
     )
     name = Column(Text, nullable=False)
     account_identifier = Column(Text, nullable=False)
@@ -21,7 +21,14 @@ class SnowflakeConnection(Base):
     role_name = Column(Text, nullable=False)
     warehouse_name = Column(Text, nullable=False)
     auth_method = Column(Text, nullable=False)
-    secret_reference = Column(Text, nullable=False)
+    secret_reference = Column(Text, nullable=True)
+    credential_provider = Column(Text, nullable=False, server_default="environment")
+    lifecycle_state = Column(Text, nullable=False, server_default="configured")
+    public_key = Column(Text, nullable=True)
+    public_key_fingerprint = Column(Text, nullable=True)
+    key_pair_name = Column(Text, nullable=True)
+    key_expires_at = Column(DateTime(timezone=True), nullable=True)
+    validation_error = Column(Text, nullable=True)
     status = Column(Text, nullable=False, server_default="pending")
     capabilities = Column(JSONB, nullable=False, server_default="{}")
     watermarks = Column(JSONB, nullable=False, server_default="{}")

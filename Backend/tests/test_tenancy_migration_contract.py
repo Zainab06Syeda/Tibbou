@@ -27,6 +27,12 @@ INVITATION_MIGRATION = (
     / "versions"
     / "20260910_120000_add_organization_invitations.py"
 )
+SNOWFLAKE_VAULT_MIGRATION = (
+    DATABASE
+    / "alembic"
+    / "versions"
+    / "20260921_120000_add_snowflake_vault_connections.py"
+)
 
 
 def offline_sql(revision_range: str = "20260408_203100:20260818_120000") -> str:
@@ -291,6 +297,68 @@ class OrganizationInvitationMigrationContractTests(unittest.TestCase):
         self.assertNotIn("drop policy organizations_read", self.sql)
         self.assertNotIn("create policy organizations_read", self.sql)
         self.assertIn("private.can_accept_organization_invitation", self.sql)
+
+
+class SnowflakeVaultMigrationContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = SNOWFLAKE_VAULT_MIGRATION.read_text(encoding="utf-8").lower()
+        cls.sql = offline_sql("20260910_120000:20260921_120000")
+
+    def test_revision_is_additive_and_preserves_existing_business_rows(self):
+        self.assertIn('revision = "20260921_120000"', self.source)
+        self.assertIn('down_revision = "20260910_120000"', self.source)
+        upgrade_ddl = self.source.split(
+            "create function private.create_snowflake_connection_secret", 1
+        )[0]
+        for statement in ("insert into public.", "update public.", "delete from public."):
+            self.assertNotIn(statement, upgrade_ddl)
+        self.assertNotIn("truncate ", self.source)
+        self.assertNotIn("drop extension", self.source)
+
+    def test_vault_is_required_and_credentials_are_only_exposed_by_narrow_functions(self):
+        self.assertIn("extname = 'supabase_vault'", self.sql)
+        self.assertIn("vault.create_secret", self.sql)
+        self.assertIn("from vault.decrypted_secrets", self.sql)
+        self.assertGreaterEqual(
+            self.sql.count("security definer set search_path = ''"), 2
+        )
+        self.assertIn(
+            "revoke all on vault.secrets, vault.decrypted_secrets from public, anon, "
+            "authenticated, service_role, tibbou_runtime, tibbou_worker",
+            self.sql,
+        )
+        self.assertNotIn("grant select on vault.", self.sql)
+
+    def test_connection_lifecycle_and_single_enabled_connection_are_database_enforced(self):
+        self.assertIn("ck_snowflake_connections_lifecycle_state", self.sql)
+        self.assertIn(
+            "'configured', 'validated', 'active', 'invalid', 'disabled'", self.sql
+        )
+        self.assertIn(
+            "create unique index uq_snowflake_connections_one_enabled_per_org", self.sql
+        )
+        self.assertIn("where enabled", self.sql)
+
+    def test_runtime_management_is_admin_only_and_worker_access_is_narrow(self):
+        self.assertIn(
+            "snowflake_connections_insert on snowflake_connections for insert to "
+            "tibbou_runtime with check",
+            self.sql,
+        )
+        self.assertIn("array['owner', 'admin']::text[]", self.sql)
+        self.assertIn(
+            "revoke insert, delete on snowflake_connections from tibbou_worker", self.sql
+        )
+        self.assertIn(
+            "private.read_snowflake_connection_secret(uuid) to tibbou_runtime, tibbou_worker",
+            self.sql,
+        )
+
+    def test_downgrade_never_deletes_vault_secrets(self):
+        downgrade = self.source.split("def downgrade()", 1)[1]
+        self.assertNotIn("delete from vault.", downgrade)
+        self.assertNotIn("truncate vault.", downgrade)
 
 
 if __name__ == "__main__":

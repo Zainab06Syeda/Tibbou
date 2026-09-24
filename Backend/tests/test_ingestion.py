@@ -12,10 +12,9 @@ from app.api.routes.ingestion import _existing_run_after_idempotency_conflict
 from app.services.ingestion import (
     _dbt_resources,
     _equal_allocation_weights,
-    _fetch_snowflake_usage,
-    _secret_env_prefix,
     process_dbt_manifest,
 )
+from app.services.snowflake import _secret_env_prefix, fetch_usage
 
 
 class _IdempotencyUniqueViolation(UniqueViolation):
@@ -114,11 +113,8 @@ class IngestionTests(unittest.TestCase):
     def test_access_history_is_scoped_to_usage_query_ids_and_bounded(self):
         fake_connection = _FakeSnowflakeConnection()
         metadata = SimpleNamespace(warehouse_name="TEST_WH")
-        with (
-            patch("snowflake.connector.connect", return_value=fake_connection),
-            patch("app.services.ingestion._snowflake_connection_kwargs", return_value={}),
-        ):
-            usage, object_names, available = _fetch_snowflake_usage(metadata)
+        with patch("snowflake.connector.connect", return_value=fake_connection):
+            usage, object_names, available = fetch_usage(metadata, {})
 
         self.assertEqual([row["query_id"] for row in usage], ["query-1"])
         self.assertEqual(object_names, {"query-1": {"DB.SCHEMA.TABLE"}})
