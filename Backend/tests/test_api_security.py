@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tibbou")
+os.environ.setdefault("DATABASE_URL", "postgresql://tibbou_api_login@localhost:5432/tibbou")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 
 from fastapi.testclient import TestClient

@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
-os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tibbou")
+os.environ.setdefault("DATABASE_URL", "postgresql://tibbou_api_login@localhost:5432/tibbou")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 
 from app.api.routes.invitations import (

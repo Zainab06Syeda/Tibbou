@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 
-os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tibbou")
+os.environ.setdefault("DATABASE_URL", "postgresql://tibbou_api_login@localhost:5432/tibbou")
 
 from app.api.routes.ingestion import _existing_run_after_idempotency_conflict
 from app.services.ingestion import (
