@@ -1,6 +1,10 @@
 import { useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 
+import TibbouLockup from "@/components/auth/TibbouLockup";
+import TibbouMark from "@/components/auth/TibbouMark";
+import "@/components/auth/login.css";
+import "./login-page.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { entraOAuthOptions, entraSsoEnabled } from "@/lib/authConfig";
 import { getAuthErrorMessage } from "@/lib/authErrors";
@@ -15,6 +19,7 @@ export default function Login() {
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
   const pendingRequest = useRef(false);
+
   if (loading) return <div className="grid min-h-screen place-items-center">Loading…</div>;
   if (session) return <Navigate to="/" replace />;
 
@@ -80,101 +85,167 @@ export default function Login() {
   }
 
   return (
-    <main className="grid min-h-screen place-items-center bg-background p-6 text-foreground">
-      <section className="w-full max-w-md rounded-xl border border-border bg-card p-8 shadow-xl">
-        <p className="text-sm font-semibold text-emerald-400">Tibbou</p>
-        <h1 className="mt-2 text-2xl font-semibold">
-          {mode === "signIn" ? "Sign in to your workspace" : "Create your account"}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Sign in with Microsoft when available, or use email and password.
-        </p>
-        {!configured ? (
-          <p className="mt-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-            Supabase Auth is not configured. Set the Vite publishable-key environment variables.
+    <div className="tb-login" data-theme="dark">
+      <main className="tb-login__form-col">
+        <div className="tb-login__mark">
+          <TibbouLockup size={13} theme="dark" />
+        </div>
+
+        <div className="tb-login__form-wrap">
+          <h1 className="tb-login__title">
+            {mode === "signIn" ? "Welcome back" : "Create your account"}
+          </h1>
+          <p className="tb-login__lede">
+            {mode === "signIn"
+              ? "Sign in to see where your warehouse spend went this week."
+              : "Set up your account, then create or join a workspace."}
           </p>
-        ) : (
-          <>
-            <div className="mt-6 grid grid-cols-2 rounded-md border border-border bg-background p-1">
-              <button
-                className={`rounded px-3 py-2 text-sm font-medium ${mode === "signIn" ? "bg-card text-foreground" : "text-muted-foreground"}`}
-                type="button"
-                disabled={pending}
-                onClick={() => selectMode("signIn")}
-              >
-                Sign in
-              </button>
-              <button
-                className={`rounded px-3 py-2 text-sm font-medium ${mode === "signUp" ? "bg-card text-foreground" : "text-muted-foreground"}`}
-                type="button"
-                disabled={pending}
-                onClick={() => selectMode("signUp")}
-              >
-                Create account
-              </button>
-            </div>
 
-            <form className="mt-4 space-y-4" onSubmit={submit}>
-              <label className="block text-sm font-medium" htmlFor="email">
-                Email
-                <input
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-emerald-500"
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
+          {!configured ? (
+            <p className="tb-login__error" role="alert">
+              Supabase Auth is not configured. Set the Vite publishable-key environment variables.
+            </p>
+          ) : (
+            <>
+              <div className="tb-mode-switch">
+                <button
+                  type="button"
+                  className={`tb-mode-switch__btn ${mode === "signIn" ? "tb-mode-switch__btn--active" : ""}`}
                   disabled={pending}
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </label>
-              <label className="block text-sm font-medium" htmlFor="password">
-                Password
-                <input
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-emerald-500"
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete={mode === "signIn" ? "current-password" : "new-password"}
-                  required
+                  onClick={() => selectMode("signIn")}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className={`tb-mode-switch__btn ${mode === "signUp" ? "tb-mode-switch__btn--active" : ""}`}
                   disabled={pending}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-              <button
-                className="w-full rounded-md bg-emerald-500 px-4 py-2 font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-                type="submit"
-                disabled={pending}
-              >
-                {pending ? "Please wait…" : mode === "signIn" ? "Sign in" : "Create account"}
-              </button>
-            </form>
+                  onClick={() => selectMode("signUp")}
+                >
+                  Create account
+                </button>
+              </div>
 
-            <div className="my-6 flex items-center gap-3 text-xs uppercase tracking-wide text-muted-foreground">
-              <span className="h-px flex-1 bg-border" />
-              Or continue with
-              <span className="h-px flex-1 bg-border" />
+              <form className="tb-login__form" onSubmit={submit} noValidate>
+                <div className="tb-field">
+                  <label htmlFor="tb-email" className="tb-field__label">Work email</label>
+                  <input
+                    id="tb-email"
+                    className="tb-field__input"
+                    type="email"
+                    name="email"
+                    autoComplete="email"
+                    placeholder="you@company.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                    disabled={pending}
+                  />
+                </div>
+
+                <div className="tb-field">
+                  <label htmlFor="tb-password" className="tb-field__label">Password</label>
+                  <input
+                    id="tb-password"
+                    className="tb-field__input"
+                    type="password"
+                    name="password"
+                    autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+                    placeholder="••••••••••"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                    disabled={pending}
+                  />
+                </div>
+
+                {error ? <p className="tb-login__error" role="alert">{error}</p> : null}
+                {notice ? <p className="tb-login__notice" role="status">{notice}</p> : null}
+
+                <button type="submit" className="tb-btn tb-btn--primary" disabled={pending}>
+                  {pending ? "Please wait…" : mode === "signIn" ? "Sign in" : "Create account"}
+                </button>
+
+                <div className="tb-divider" aria-hidden="true">
+                  <span />
+                  <em>OR</em>
+                  <span />
+                </div>
+
+                <button
+                  type="button"
+                  className="tb-btn tb-btn--secondary"
+                  onClick={entraSsoEnabled ? signInWithEntra : undefined}
+                  disabled={pending || !entraSsoEnabled}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  {entraSsoEnabled ? "Continue with Microsoft" : "Microsoft Entra ID — Not enabled"}
+                </button>
+                <button type="button" className="tb-btn tb-btn--secondary" disabled>
+                  Okta — Coming soon
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+      </main>
+
+      <aside className="tb-panel">
+        <div className="tb-panel__glow" aria-hidden="true" />
+        <div className="tb-panel__glow tb-panel__glow--2" aria-hidden="true" />
+
+        <div className="tb-ghost tb-ghost--1" aria-hidden="true" />
+        <div className="tb-ghost tb-ghost--3" aria-hidden="true" />
+
+        <div className="tb-chip tb-chip--1" aria-hidden="true">
+          models traced <strong>128</strong>
+        </div>
+        <div className="tb-chip tb-chip--3" aria-hidden="true">
+          last sync <strong>2m ago</strong>
+        </div>
+        <div className="tb-chip tb-chip--4" aria-hidden="true">
+          rows scanned <strong>12,482</strong>
+        </div>
+
+        <div className="tb-scrap tb-scrap--2" aria-hidden="true">warehouse: analytics_wh</div>
+
+        <div className="tb-panel__eyebrow">COST &amp; LINEAGE ATTRIBUTION</div>
+
+        <div className="tb-panel__visual" aria-hidden="true">
+          <TibbouMark size={80} theme="dark" className="tb-panel__mark" />
+
+          <div className="tb-rows">
+            <div className="tb-row">
+              <span className="tb-row__name">stg_orders</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--a" /></div>
             </div>
-            <div className="space-y-2">
-              <button
-                className="w-full rounded-md border border-border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-70"
-                type="button"
-                disabled={!entraSsoEnabled || pending}
-                onClick={entraSsoEnabled ? signInWithEntra : undefined}
-              >
-                {entraSsoEnabled ? "Continue with Microsoft" : "Microsoft Entra ID — Not enabled"}
-              </button>
-              <button className="w-full cursor-not-allowed rounded-md border border-border px-4 py-2 text-sm text-muted-foreground opacity-70" type="button" disabled>
-                Okta — Coming soon
-              </button>
+            <div className="tb-row">
+              <span className="tb-row__name">fct_revenue</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--b" /></div>
             </div>
-          </>
-        )}
-        {error ? <p className="mt-3 text-sm text-red-300" role="alert">{error}</p> : null}
-        {notice ? <p className="mt-3 text-sm text-emerald-300" role="status">{notice}</p> : null}
-      </section>
-    </main>
+            <div className="tb-row">
+              <span className="tb-row__name">dim_customers</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--c" /></div>
+            </div>
+            <div className="tb-row">
+              <span className="tb-row__name">mart_orders_daily</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--d" /></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="tb-panel__copy">
+          <p className="tb-panel__headline">Every query traced back to the model that ran it.</p>
+          <p className="tb-panel__body">
+            Tibbou reads your dbt manifest and Snowflake query history, then puts a number next to
+            every node in the graph.
+          </p>
+        </div>
+      </aside>
+    </div>
   );
 }

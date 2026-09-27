@@ -1,0 +1,35 @@
+/* Login-specific additions on top of the shared tb-* split-shell design
+ * system (../components/auth/login.css). login.css itself has no sign-up
+ * mode (the reference LoginPage component it came with is sign-in only),
+ * so this adds just the pieces that need: a mode toggle and a success
+ * notice (separate from its existing error style). */
+
+.tb-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 20px;
+  border: 1px solid var(--tb-input-border);
+  border-radius: var(--tb-radius);
+}
+.tb-mode-switch__btn {
+  height: 38px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--tb-radius) - 4px);
+  font: 500 14px/1 var(--tb-font);
+  color: var(--tb-text-2);
+  cursor: pointer;
+}
+.tb-mode-switch__btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.tb-mode-switch__btn--active { background: var(--tb-input-bg); color: var(--tb-text); }
+
+.tb-login__notice {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #3FD9AE;
+  background: rgba(63, 217, 174, 0.12);
+  border-radius: 8px;
+}
