@@ -1,7 +1,7 @@
 """add organization onboarding fields
 
 Revision ID: 20260926_120000
-Revises: 20260910_120000
+Revises: 20260922_120000
 Create Date: 2026-09-26 12:00:00
 
 Adds domain-claiming support to organizations (claimed_email_domain,
@@ -11,6 +11,13 @@ database_name column to snowflake_connections so a connection can target a
 specific database rather than only account/warehouse/role. Both columns are
 nullable additions with no backfill: existing rows simply have no claimed
 domain and no configured database until an admin sets one.
+
+Re-parented onto 20260922_120000 (not 20260910_120000, its original base)
+because feature/snowflake-dbt-data-path's two migrations were already
+applied to the live database out of band before this branch's migrations
+were written -- 20260910_120000 is no longer the actual tip of what's
+deployed. The database_name column added here doesn't collide with
+anything that migration added to snowflake_connections.
 """
 
 from alembic import op
@@ -19,7 +26,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "20260926_120000"
-down_revision = "20260910_120000"
+down_revision = "20260922_120000"
 branch_labels = None
 depends_on = None
 
