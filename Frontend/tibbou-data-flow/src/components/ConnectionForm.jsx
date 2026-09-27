@@ -8,8 +8,12 @@ openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
 cat rsa_key.p8
 cat rsa_key.pub`;
 
+// Deliberately not piped: Windows PowerShell 5.1 can mangle text piped
+// between two native (non-PowerShell) processes, which corrupts the PEM
+// framing. Writing each step to a file and reading it back sidesteps that.
 const WINDOWS_KEYGEN = `$openssl = "C:\\Program Files\\Git\\usr\\bin\\openssl.exe"
-& $openssl genrsa 2048 | & $openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+& $openssl genrsa -out rsa_key_raw.pem 2048
+& $openssl pkcs8 -topk8 -inform PEM -in rsa_key_raw.pem -out rsa_key.p8 -nocrypt
 & $openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
 Get-Content rsa_key.p8
 Get-Content rsa_key.pub`;
@@ -254,6 +258,11 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
                 Paste the <strong>entire</strong> output of the first file (including the BEGIN/END
                 lines) into the field below. From the second file, copy only the base64 lines
                 <em> between</em> BEGIN/END — no header or footer — into the SQL above.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Getting a "could not read the private key" / "MalformedFraming" error? The paste is
+                missing or has extra lines — re-copy directly from your terminal's output rather than
+                retyping it, and make sure nothing was added before the first line or after the last.
               </p>
             </details>
 
