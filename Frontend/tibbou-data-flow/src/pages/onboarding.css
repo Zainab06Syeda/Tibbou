@@ -34,14 +34,21 @@
   padding: 44px 48px;
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
 }
-.tb-onboard-card__mark { display: flex; margin-bottom: 24px; }
-.tb-onboard-card__footer {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--tb-input-border);
-  font-size: 14px;
+.tb-onboard-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.tb-signout {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: 500 13px/1 var(--tb-font);
   color: var(--tb-text-2);
 }
+.tb-signout:hover { color: var(--tb-link); }
 
 @media (max-width: 640px) {
   .tb-onboard-center { padding: 24px 16px; }

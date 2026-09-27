@@ -83,7 +83,8 @@ function StepDots({ current }) {
 // page, but not its side-by-side layout: the panel fills the whole viewport
 // as a background, and the form sits in one centered, frosted-glass card on
 // top of it. `step` drives both the dot tracker and the panel's copy below.
-function Shell({ step, title, lede, footer, children }) {
+function Shell({ step, title, lede, children }) {
+  const { user, signOut } = useAuth();
   const panel = PANEL_CONTENT[step] || PANEL_CONTENT.entry;
   return (
     <div className="tb-login tb-login--onboard" data-theme="dark">
@@ -136,16 +137,17 @@ function Shell({ step, title, lede, footer, children }) {
 
       <div className="tb-onboard-center">
         <main className="tb-onboard-card">
-          <div className="tb-onboard-card__mark">
+          <div className="tb-onboard-card__top">
             <TibbouLockup size={13} theme="dark" />
+            <button type="button" onClick={signOut} className="tb-signout" title={user?.email}>
+              Sign out
+            </button>
           </div>
 
           {STEPS.includes(step) ? <StepDots current={step} /> : null}
           <h1 className="tb-login__title">{title}</h1>
           {lede ? <p className="tb-login__lede">{lede}</p> : null}
           {children}
-
-          {footer ? <footer className="tb-onboard-card__footer">{footer}</footer> : null}
         </main>
       </div>
     </div>
@@ -158,7 +160,6 @@ function Shell({ step, title, lede, footer, children }) {
 // a clean path to create a new one.
 // ---------------------------------------------------------------------------
 function EntryStep({ onOrganizationReady, onCreateNew }) {
-  const { user, signOut } = useAuth();
   const { invitations, acceptInvitation } = useOrganization();
   const [domainMatch, setDomainMatch] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -229,18 +230,7 @@ function EntryStep({ onOrganizationReady, onCreateNew }) {
   const alreadyRequested = requested || domainMatch?.already_requested;
 
   return (
-    <Shell
-      step="entry"
-      title="Welcome to Tibbou"
-      lede="Let's get you into a workspace."
-      footer={
-        <span>
-          <button type="button" onClick={signOut} className="tb-link" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit" }}>
-            Sign out ({user?.email})
-          </button>
-        </span>
-      }
-    >
+    <Shell step="entry" title="Welcome to Tibbou" lede="Let's get you into a workspace.">
       <div className="tb-stack">
         {domainMatch?.organization ? (
           <div className="tb-card">
