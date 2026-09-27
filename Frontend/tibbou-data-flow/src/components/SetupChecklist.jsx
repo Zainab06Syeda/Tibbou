@@ -2,15 +2,14 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { getAdminDashboard, getLatestDbtManifestIngestionSummary } from "@/api/tibbou";
+import { getAdminDashboard, getLatestDbtManifestIngestionSummary, listConnections } from "@/api/tibbou";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { hasPermission } from "@/lib/permissions";
 
-// Connecting Snowflake isn't a checklist item here: WorkspaceGate already
-// requires an enabled connection before any authenticated route (including
-// this dashboard) is reachable at all, so by the time this renders that step
-// is already done. Only the wizard's two skippable steps -- dbt manifest and
-// inviting the team -- are worth surfacing as recoverable here.
+// Connecting Snowflake used to be guaranteed done by the time this renders
+// (WorkspaceGate required an enabled connection for any authenticated
+// route), but the wizard's connection step is now skippable, so it's
+// checked and surfaced here like the other two skippable steps.
 function dismissedKey(organizationId) {
   return `tibbou.setupChecklistDismissed.${organizationId}`;
 }
@@ -19,6 +18,7 @@ export default function SetupChecklist() {
   const { organization } = useOrganization();
   const canSeeChecklist = hasPermission(organization?.role, "manage_members");
   const [dismissed, setDismissed] = useState(true);
+  const [connectionEnabled, setConnectionEnabled] = useState(null);
   const [manifestUploaded, setManifestUploaded] = useState(null);
   const [teamInvited, setTeamInvited] = useState(null);
 
@@ -29,6 +29,9 @@ export default function SetupChecklist() {
 
   useEffect(() => {
     if (!canSeeChecklist || !organization?.id) return;
+    listConnections()
+      .then((rows) => setConnectionEnabled(rows.some((row) => row.enabled)))
+      .catch(() => setConnectionEnabled(false));
     getLatestDbtManifestIngestionSummary()
       .then(() => setManifestUploaded(true))
       .catch(() => setManifestUploaded(false));
@@ -43,10 +46,16 @@ export default function SetupChecklist() {
   }
 
   if (!canSeeChecklist || dismissed) return null;
-  if (manifestUploaded === null || teamInvited === null) return null;
-  if (manifestUploaded && teamInvited) return null;
+  if (connectionEnabled === null || manifestUploaded === null || teamInvited === null) return null;
+  if (connectionEnabled && manifestUploaded && teamInvited) return null;
 
   const items = [
+    {
+      done: connectionEnabled,
+      label: "Connect Snowflake",
+      description: "So Tibbou can read query and lineage metadata.",
+      to: "/settings/connection",
+    },
     {
       done: manifestUploaded,
       label: "Upload your dbt manifest",

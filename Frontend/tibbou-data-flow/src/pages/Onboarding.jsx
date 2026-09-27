@@ -376,16 +376,21 @@ function OrganizationStep({ onCreated }) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: connect Snowflake -- test before save, required to continue
+// Step 2: connect Snowflake -- recommended, but skippable. Skipping drops the
+// user straight onto the dashboard; SetupChecklist there surfaces "Connect
+// Snowflake" (linking to /settings/connection) until one is actually enabled.
 // ---------------------------------------------------------------------------
-function ConnectionStep({ onConnected }) {
+function ConnectionStep({ onConnected, onSkip }) {
   return (
     <Shell
       step="connection"
       title="Connect Snowflake"
-      lede="Required — Tibbou reads query and lineage metadata from this connection. Nothing you type here is stored; only a reference label is saved."
+      lede="Tibbou reads query and lineage metadata from this connection. Nothing you type here is stored; only a reference label is saved."
     >
       <ConnectionForm onSaved={onConnected} />
+      <button type="button" onClick={onSkip} className="tb-btn tb-btn--secondary" style={{ marginTop: 16 }}>
+        Skip for now — connect Snowflake later from Settings
+      </button>
     </Shell>
   );
 }
@@ -561,7 +566,7 @@ function DoneStep({ onFinish }) {
 
 // ---------------------------------------------------------------------------
 
-export default function Onboarding({ hasOrganization, onFinish }) {
+export default function Onboarding({ hasOrganization, onFinish, onSkip }) {
   const { organization, refresh } = useOrganization();
   const [step, setStep] = useState(hasOrganization ? "connection" : "entry");
 
@@ -588,7 +593,7 @@ export default function Onboarding({ hasOrganization, onFinish }) {
     );
   }
   if (step === "connection") {
-    return <ConnectionStep onConnected={() => setStep("manifest")} />;
+    return <ConnectionStep onConnected={() => setStep("manifest")} onSkip={onSkip} />;
   }
   if (step === "manifest") {
     return <ManifestStep onDone={() => setStep("invite")} />;
