@@ -56,6 +56,22 @@ class ApiSecurityTests(unittest.TestCase):
             "/api/v1/organizations/00000000-0000-0000-0000-000000000001/join-requests"
         )
         self.assertEqual(list_join_requests_response.status_code, 401)
+        resend_invitation_response = self.client.post(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001"
+            "/invitations/00000000-0000-0000-0000-000000000002/resend"
+        )
+        self.assertEqual(resend_invitation_response.status_code, 401)
+        test_connection_response = self.client.post(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/snowflake-connections/test",
+            json={
+                "account_identifier": "acme",
+                "role_name": "TIBBOU_READER",
+                "warehouse_name": "TIBBOU_WH",
+                "auth_method": "external_oauth",
+                "oauth_token": "token",
+            },
+        )
+        self.assertEqual(test_connection_response.status_code, 401)
 
     def test_database_ping_is_not_public(self):
         response = self.client.get("/db/ping")

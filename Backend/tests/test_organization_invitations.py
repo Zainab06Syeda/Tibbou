@@ -2,7 +2,7 @@ import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -18,6 +18,7 @@ from app.api.routes.invitations import (
     create_invitation,
     delete_invitation,
     list_my_invitations,
+    resend_invitation,
 )
 from app.auth import CurrentUser, OrganizationAccess
 from app.schemas.organizations import OrganizationInvitationCreate
@@ -76,6 +77,107 @@ class OrganizationInvitationTests(unittest.TestCase):
         self.assertEqual(result.role, "admin")
         self.assertEqual(result.invited_by, USER_ID)
         db.commit.assert_called_once()
+
+    def test_create_invitation_sends_email_and_reports_delivery_status(self):
+        now = datetime.now(timezone.utc)
+        db = MagicMock()
+
+        def add_server_values():
+            invitation = db.add.call_args.args[0]
+            invitation.id = INVITATION_ID
+            invitation.created_at = now
+            invitation.expires_at = now + timedelta(days=7)
+
+        db.flush.side_effect = add_server_values
+        organization = SimpleNamespace(id=ORGANIZATION_ID, name="Acme")
+        db.query.return_value.filter.return_value.one.return_value = organization
+        access = OrganizationAccess(ORGANIZATION_ID, self.user, "owner")
+
+        with patch(
+            "app.api.routes.invitations.send_invitation_email", return_value=True
+        ) as send_email:
+            result = create_invitation(
+                payload=OrganizationInvitationCreate(email="new@example.com", role="viewer"),
+                access=access,
+                db=db,
+            )
+
+        send_email.assert_called_once_with(
+            to_email="new@example.com",
+            organization_name="Acme",
+            role="viewer",
+            expires_at=(now + timedelta(days=7)).isoformat(),
+        )
+        self.assertTrue(result.email_sent)
+
+    def test_create_invitation_reports_unsent_email_without_failing(self):
+        now = datetime.now(timezone.utc)
+        db = MagicMock()
+
+        def add_server_values():
+            invitation = db.add.call_args.args[0]
+            invitation.id = INVITATION_ID
+            invitation.created_at = now
+            invitation.expires_at = now + timedelta(days=7)
+
+        db.flush.side_effect = add_server_values
+        db.query.return_value.filter.return_value.one.return_value = SimpleNamespace(
+            id=ORGANIZATION_ID, name="Acme"
+        )
+        access = OrganizationAccess(ORGANIZATION_ID, self.user, "owner")
+
+        with patch(
+            "app.api.routes.invitations.send_invitation_email", return_value=False
+        ):
+            result = create_invitation(
+                payload=OrganizationInvitationCreate(email="new@example.com", role="viewer"),
+                access=access,
+                db=db,
+            )
+
+        self.assertFalse(result.email_sent)
+        db.commit.assert_called_once()
+
+    def test_resend_invitation_uses_the_existing_invitation_row(self):
+        now = datetime.now(timezone.utc)
+        invitation = SimpleNamespace(
+            id=INVITATION_ID,
+            organization_id=ORGANIZATION_ID,
+            email="new@example.com",
+            role="viewer",
+            invited_by=USER_ID,
+            created_at=now,
+            expires_at=now + timedelta(days=7),
+        )
+        db = MagicMock()
+        db.query.return_value.filter.return_value.one_or_none.return_value = invitation
+        db.query.return_value.filter.return_value.one.return_value = SimpleNamespace(
+            id=ORGANIZATION_ID, name="Acme"
+        )
+        access = OrganizationAccess(ORGANIZATION_ID, self.user, "owner")
+
+        with patch(
+            "app.api.routes.invitations.send_invitation_email", return_value=True
+        ) as send_email:
+            result = resend_invitation(invitation_id=INVITATION_ID, access=access, db=db)
+
+        send_email.assert_called_once_with(
+            to_email="new@example.com",
+            organization_name="Acme",
+            role="viewer",
+            expires_at=invitation.expires_at.isoformat(),
+        )
+        self.assertTrue(result.email_sent)
+        db.add.assert_not_called()  # resend must not create a second invitation row
+
+    def test_resend_missing_or_expired_invitation_is_hidden(self):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.one_or_none.return_value = None
+        access = OrganizationAccess(ORGANIZATION_ID, self.user, "owner")
+
+        with self.assertRaises(HTTPException) as raised:
+            resend_invitation(invitation_id=INVITATION_ID, access=access, db=db)
+        self.assertEqual(raised.exception.status_code, 404)
 
     def test_user_without_email_cannot_list_or_accept_invitations(self):
         user = CurrentUser(id=USER_ID, email=None, session_id=None)

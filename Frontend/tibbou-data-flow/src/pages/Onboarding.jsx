@@ -661,7 +661,10 @@ function InviteStep({ onDone }) {
       {invited.length ? (
         <ul className="mt-4 space-y-1 text-sm text-muted-foreground">
           {invited.map((invitation) => (
-            <li key={invitation.id}>{invitation.email} — {invitation.role}</li>
+            <li key={invitation.id}>
+              {invitation.email} — {invitation.role}
+              {invitation.email_sent ? null : " (email not sent — share the sign-in link with them)"}
+            </li>
           ))}
         </ul>
       ) : null}

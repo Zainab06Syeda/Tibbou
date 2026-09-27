@@ -95,6 +95,13 @@ class OrganizationInvitationRead(BaseModel):
     expires_at: datetime
 
 
+class OrganizationInvitationCreateResult(OrganizationInvitationRead):
+    # Whether Resend actually sent the email, vs. it only being logged
+    # server-side (no RESEND_API_KEY/RESEND_FROM_EMAIL configured, or the
+    # send failed) -- lets the admin UI show a copyable link either way.
+    email_sent: bool
+
+
 class OrganizationInvitationSummaryRead(BaseModel):
     id: UUID
     organization_id: UUID

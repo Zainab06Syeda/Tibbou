@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { createInvitation, deleteInvitation, getAdminDashboard } from "@/api/tibbou";
+import { createInvitation, deleteInvitation, getAdminDashboard, resendInvitation } from "@/api/tibbou";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { entraSsoEnabled } from "@/lib/authConfig";
@@ -18,6 +18,9 @@ export default function AdminDashboard() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("viewer");
   const [submitting, setSubmitting] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState(null);
+  const [resendingId, setResendingId] = useState(null);
+  const loginUrl = `${window.location.origin}/login`;
 
   useEffect(() => {
     let active = true;
@@ -48,9 +51,11 @@ export default function AdminDashboard() {
     event.preventDefault();
     setSubmitting(true);
     setActionError("");
+    setInviteNotice(null);
     try {
       const invitation = await createInvitation({ email, role });
       setData((current) => ({ ...current, invitations: [...current.invitations, invitation] }));
+      setInviteNotice({ email: invitation.email, sent: invitation.email_sent });
       setEmail("");
       setRole("viewer");
     } catch (requestError) {
@@ -70,6 +75,19 @@ export default function AdminDashboard() {
       }));
     } catch (requestError) {
       setActionError(requestError.message || "Failed to revoke invitation.");
+    }
+  }
+
+  async function resend(invitation) {
+    setActionError("");
+    setResendingId(invitation.id);
+    try {
+      const updated = await resendInvitation(invitation.id);
+      setInviteNotice({ email: updated.email, sent: updated.email_sent });
+    } catch (requestError) {
+      setActionError(requestError.message || "Failed to resend invitation.");
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -127,6 +145,16 @@ export default function AdminDashboard() {
           </button>
         </form>
         {actionError ? <p className="mt-3 text-sm text-red-300">{actionError}</p> : null}
+        {inviteNotice ? (
+          inviteNotice.sent ? (
+            <p className="mt-3 text-sm text-emerald-400">Invitation emailed to {inviteNotice.email}.</p>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Email delivery isn't configured yet, so {inviteNotice.email} wasn't emailed automatically — share
+              this link with them instead: <span className="font-mono text-foreground">{loginUrl}</span>
+            </p>
+          )
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-border bg-card">
@@ -147,7 +175,19 @@ export default function AdminDashboard() {
                     <td className="px-5 py-3 text-sm capitalize">{invitation.role}</td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{expired ? "Expired" : formatDate(invitation.expires_at)}</td>
                     <td className="px-5 py-3 text-right">
-                      {canRevoke ? <button type="button" onClick={() => revoke(invitation)} className="text-sm text-red-300 hover:text-red-200">Revoke</button> : "—"}
+                      <div className="flex justify-end gap-3">
+                        {!expired ? (
+                          <button
+                            type="button"
+                            disabled={resendingId === invitation.id}
+                            onClick={() => resend(invitation)}
+                            className="text-sm text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {resendingId === invitation.id ? "Resending…" : "Resend"}
+                          </button>
+                        ) : null}
+                        {canRevoke ? <button type="button" onClick={() => revoke(invitation)} className="text-sm text-red-300 hover:text-red-200">Revoke</button> : null}
+                      </div>
                     </td>
                   </tr>
                 );

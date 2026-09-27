@@ -75,6 +75,12 @@ export function deleteInvitation(invitationId) {
   });
 }
 
+export function resendInvitation(invitationId) {
+  return apiRequest(organizationPath(`/invitations/${encodeURIComponent(invitationId)}/resend`), {
+    method: "POST",
+  });
+}
+
 export function getAdminDashboard() {
   return apiRequest(organizationPath("/admin"));
 }
