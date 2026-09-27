@@ -90,7 +90,7 @@ export default function AdminDashboard() {
           <dl className="mt-4 space-y-3 text-sm">
             <div><dt className="text-muted-foreground">Email</dt><dd>{data.current_user.email || "Not provided"}</dd></div>
             <div><dt className="text-muted-foreground">User ID</dt><dd className="break-all font-mono text-xs">{data.current_user.id}</dd></div>
-            <div><dt className="text-muted-foreground">Role</dt><dd className="capitalize">{data.current_user.role}</dd></div>
+            <div><dt className="text-muted-foreground">Role</dt><dd className="capitalize">{organization?.role}</dd></div>
           </dl>
         </article>
         <article className="rounded-2xl border border-border bg-card p-5">
@@ -118,7 +118,7 @@ export default function AdminDashboard() {
             className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
           <select value={role} onChange={(event) => setRole(event.target.value)} className="rounded-md border border-border bg-background px-3 py-2 text-sm">
-            {data.current_user.role === "owner" ? <option value="admin">Admin</option> : null}
+            {organization?.role === "owner" ? <option value="admin">Admin</option> : null}
             <option value="operator">Operator</option>
             <option value="viewer">Viewer</option>
           </select>
@@ -140,7 +140,7 @@ export default function AdminDashboard() {
             <tbody>
               {data.invitations.length ? data.invitations.map((invitation) => {
                 const expired = new Date(invitation.expires_at) <= new Date();
-                const canRevoke = data.current_user.role === "owner" || invitation.role !== "admin";
+                const canRevoke = organization?.role === "owner" || invitation.role !== "admin";
                 return (
                   <tr key={invitation.id} className="border-b border-border/60 last:border-0">
                     <td className="px-5 py-3 text-sm">{invitation.email}</td>

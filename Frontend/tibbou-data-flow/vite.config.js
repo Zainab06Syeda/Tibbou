@@ -15,6 +15,12 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      fs: {
+        // Allow importing the repo-shared permission matrix from outside this
+        // package's root (Database/permissions.json is the single source of
+        // truth for role -> capability permissions, read by both apps).
+        allow: [path.resolve(__dirname, '.'), path.resolve(__dirname, '../../Database')],
+      },
       proxy: {
         '/api': {
           target: backendTarget,

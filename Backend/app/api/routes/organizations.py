@@ -5,13 +5,13 @@ from app.auth import (
     CurrentUser,
     OrganizationAccess,
     get_current_user,
-    require_admin,
     set_request_user_context,
 )
 from app.db import get_db
 from app.models.organization_invitations import OrganizationInvitation
 from app.models.organization_memberships import OrganizationMembership
 from app.models.organizations import Organization
+from app.permissions import require_capability
 from app.schemas.organizations import (
     OrganizationAdminCurrentUserRead,
     OrganizationAdminRead,
@@ -50,7 +50,7 @@ def list_organizations(
 
 @router.get("/{organization_id}/admin", response_model=OrganizationAdminRead)
 def get_admin_dashboard(
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_members")),
     db: Session = Depends(get_db),
 ) -> OrganizationAdminRead:
     organization = (

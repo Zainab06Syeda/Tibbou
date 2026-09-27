@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import OrganizationAccess, require_admin, require_viewer
+from app.auth import OrganizationAccess
 from app.db import get_db
 from app.models.snowflake_connections import SnowflakeConnection
+from app.permissions import require_capability
 from app.schemas.connections import SnowflakeConnectionCreate, SnowflakeConnectionRead
 
 router = APIRouter(
@@ -17,7 +18,8 @@ router = APIRouter(
 
 @router.get("", response_model=list[SnowflakeConnectionRead])
 def list_connections(
-    access: OrganizationAccess = Depends(require_viewer), db: Session = Depends(get_db)
+    access: OrganizationAccess = Depends(require_capability("view_data")),
+    db: Session = Depends(get_db),
 ) -> list[SnowflakeConnectionRead]:
     return (
         db.query(SnowflakeConnection)
@@ -30,7 +32,7 @@ def list_connections(
 @router.post("", response_model=SnowflakeConnectionRead, status_code=status.HTTP_201_CREATED)
 def create_connection(
     payload: SnowflakeConnectionCreate,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> SnowflakeConnectionRead:
     connection = SnowflakeConnection(
@@ -52,7 +54,7 @@ def create_connection(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def disable_connection(
     connection_id: UUID,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> None:
     connection = (

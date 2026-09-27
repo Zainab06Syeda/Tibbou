@@ -1,0 +1,17 @@
+{
+  "roles": ["owner", "admin", "operator", "viewer"],
+  "capabilities": {
+    "view_data": ["owner", "admin", "operator", "viewer"],
+    "trigger_sync": ["owner", "admin", "operator"],
+    "upload_dbt_manifest": ["owner", "admin", "operator"],
+    "manage_invitations": ["owner", "admin"],
+    "manage_members": ["owner", "admin"],
+    "manage_connection": ["owner", "admin"],
+    "manage_organization": ["owner"],
+    "transfer_ownership": ["owner"]
+  },
+  "notes": {
+    "manage_invitations": "Inviting role=admin additionally requires owner — enforced in code, not expressible as a single role list.",
+    "manage_members": "Changing/removing a member with role=owner additionally requires owner — enforced in code, not expressible as a single role list."
+  }
+}

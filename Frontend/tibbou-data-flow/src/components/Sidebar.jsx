@@ -11,6 +11,7 @@ import {
 import { useState } from "react";
 
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 const baseNavItems = [
@@ -24,7 +25,7 @@ export default function Sidebar() {
   const location = useLocation();
   const { organization } = useOrganization();
   const [collapsed, setCollapsed] = useState(false);
-  const navItems = ["owner", "admin"].includes(organization?.role)
+  const navItems = hasPermission(organization?.role, "manage_members")
     ? [...baseNavItems, { path: "/admin", label: "Admin", icon: ShieldCheck }]
     : baseNavItems;
 

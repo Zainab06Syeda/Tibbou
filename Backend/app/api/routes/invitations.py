@@ -11,13 +11,13 @@ from app.auth import (
     OrganizationAccess,
     get_current_user,
     normalize_email,
-    require_admin,
     set_request_user_context,
 )
 from app.db import get_db
 from app.models.organization_invitations import OrganizationInvitation
 from app.models.organization_memberships import OrganizationMembership
 from app.models.organizations import Organization
+from app.permissions import require_capability
 from app.schemas.organizations import (
     OrganizationInvitationCreate,
     OrganizationInvitationRead,
@@ -139,7 +139,7 @@ def accept_invitation(
 )
 def create_invitation(
     payload: OrganizationInvitationCreate,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_invitations")),
     db: Session = Depends(get_db),
 ) -> OrganizationInvitationRead:
     _require_invitable_role(access, payload.role)
@@ -173,7 +173,7 @@ def create_invitation(
 )
 def delete_invitation(
     invitation_id: UUID,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_invitations")),
     db: Session = Depends(get_db),
 ) -> None:
     invitation = (
