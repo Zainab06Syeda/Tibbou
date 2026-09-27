@@ -85,6 +85,43 @@ export function getAdminDashboard() {
   return apiRequest(organizationPath("/admin"));
 }
 
+export function updateMemberRole(userId, role) {
+  return apiRequest(organizationPath(`/memberships/${encodeURIComponent(userId)}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeMember(userId) {
+  return apiRequest(organizationPath(`/memberships/${encodeURIComponent(userId)}`), {
+    method: "DELETE",
+  });
+}
+
+export function transferOwnership(userId) {
+  return apiRequest(
+    organizationPath(`/memberships/${encodeURIComponent(userId)}/transfer-ownership`),
+    { method: "POST" }
+  );
+}
+
+export function listJoinRequests() {
+  return apiRequest(organizationPath("/join-requests"));
+}
+
+export function approveJoinRequest(requestId) {
+  return apiRequest(organizationPath(`/join-requests/${encodeURIComponent(requestId)}/approve`), {
+    method: "POST",
+  });
+}
+
+export function denyJoinRequest(requestId) {
+  return apiRequest(organizationPath(`/join-requests/${encodeURIComponent(requestId)}/deny`), {
+    method: "POST",
+  });
+}
+
 export function getDatasets() {
   return apiRequest(organizationPath("/datasets"));
 }

@@ -6,11 +6,12 @@ import WorkspaceGate from "@/components/WorkspaceGate";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import PageNotFound from "@/lib/PageNotFound";
-import AdminDashboard from "@/pages/AdminDashboard";
 import CostTracking from "@/pages/CostTracking";
 import Dashboard from "@/pages/Dashboard";
 import Datasets from "@/pages/Datasets";
 import Lineage from "@/pages/Lineage";
+import SettingsConnection from "@/pages/SettingsConnection";
+import SettingsMembers from "@/pages/SettingsMembers";
 import AuthCallback from "@/pages/AuthCallback";
 import Login from "@/pages/Login";
 
@@ -28,7 +29,8 @@ export default function App() {
                 <Route path="/datasets" element={<Datasets />} />
                 <Route path="/lineage" element={<Lineage />} />
                 <Route path="/costs" element={<CostTracking />} />
-                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/settings/members" element={<SettingsMembers />} />
+                <Route path="/settings/connection" element={<SettingsConnection />} />
               </Route>
             </Route>
           </Route>

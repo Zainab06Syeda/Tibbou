@@ -6,7 +6,8 @@ import {
   DollarSign,
   GitBranch,
   LayoutDashboard,
-  ShieldCheck,
+  Plug,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -25,9 +26,15 @@ export default function Sidebar() {
   const location = useLocation();
   const { organization } = useOrganization();
   const [collapsed, setCollapsed] = useState(false);
-  const navItems = hasPermission(organization?.role, "manage_members")
-    ? [...baseNavItems, { path: "/admin", label: "Admin", icon: ShieldCheck }]
-    : baseNavItems;
+  const navItems = [
+    ...baseNavItems,
+    ...(hasPermission(organization?.role, "manage_members")
+      ? [{ path: "/settings/members", label: "Members", icon: Users }]
+      : []),
+    ...(hasPermission(organization?.role, "manage_connection")
+      ? [{ path: "/settings/connection", label: "Connection", icon: Plug }]
+      : []),
+  ];
 
   return (
     <aside
