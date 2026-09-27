@@ -3,6 +3,47 @@ import { useMemo, useState } from "react";
 import { createConnection, testConnection } from "@/api/tibbou";
 import { leastPrivilegeSql, slugPreview } from "@/lib/organizations";
 
+const MAC_LINUX_KEYGEN = `openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
+cat rsa_key.p8
+cat rsa_key.pub`;
+
+const WINDOWS_KEYGEN = `$openssl = "C:\\Program Files\\Git\\usr\\bin\\openssl.exe"
+& $openssl genrsa 2048 | & $openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+& $openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
+Get-Content rsa_key.p8
+Get-Content rsa_key.pub`;
+
+// A copyable shell snippet -- used for both the keygen commands here and
+// (via the same pattern) the setup SQL above.
+function CopyBlock({ code }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can be unavailable (e.g. insecure context); the code is
+      // still selectable/readable in the <pre> block below.
+    }
+  }
+
+  return (
+    <div>
+      <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-secondary/30 p-3 text-xs">{code}</pre>
+      <button
+        type="button"
+        onClick={copy}
+        className="mt-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-secondary/40"
+      >
+        {copied ? "Copied!" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 // Shared by the onboarding wizard's "Connect Snowflake" step and
 // /settings/connection: test-before-save, credentials never persisted --
 // only a chosen secret_reference label is saved via createConnection.
@@ -188,6 +229,34 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
 
         {form.auth_method === "key_pair" ? (
           <>
+            <details className="rounded-lg border border-border bg-background p-4 text-sm">
+              <summary className="cursor-pointer font-medium">
+                Don't have a private key yet? Generate one
+              </summary>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Snowflake doesn't hand you a private key — you generate one yourself, keep it, and
+                give Snowflake only the public half (paste it into the <span className="font-mono">rsa_public_key</span>{" "}
+                line in the setup SQL above). Run one of these in a terminal on your own computer.
+              </p>
+
+              <p className="mt-3 text-xs font-medium">macOS / Linux</p>
+              <CopyBlock code={MAC_LINUX_KEYGEN} />
+
+              <p className="mt-3 text-xs font-medium">Windows (PowerShell)</p>
+              <CopyBlock code={WINDOWS_KEYGEN} />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Uses the OpenSSL bundled with Git for Windows. If that path doesn't exist, install{" "}
+                <span className="font-mono">Git for Windows</span> first, or ask someone who manages
+                your computer for a key generated with <span className="font-mono">openssl genrsa</span>.
+              </p>
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                Paste the <strong>entire</strong> output of the first file (including the BEGIN/END
+                lines) into the field below. From the second file, copy only the base64 lines
+                <em> between</em> BEGIN/END — no header or footer — into the SQL above.
+              </p>
+            </details>
+
             <textarea
               required
               value={form.private_key_pem}
