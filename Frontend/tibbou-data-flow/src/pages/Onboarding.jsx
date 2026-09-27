@@ -3,7 +3,6 @@ import {
   Building2,
   Check,
   FileJson,
-  GitBranch,
   Plug,
   Sparkles,
   UserPlus,
@@ -34,31 +33,24 @@ const STEPS = [
 
 function Brandmark() {
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/20">
-        <GitBranch className="h-4 w-4 text-primary" />
-      </div>
-      <div>
-        <span className="text-lg font-semibold tracking-tight text-foreground">Tibbou</span>
-        <p className="text-[11px] text-muted-foreground">Data lineage and cost visibility</p>
-      </div>
+    <div className="flex items-center">
+      <img src="/brand/tibbou-header-dark.gif" alt="Tibbou" className="h-9 w-auto" />
+      <p className="ml-3 border-l border-border pl-3 text-[11px] text-muted-foreground">
+        Data lineage and cost visibility
+      </p>
     </div>
   );
 }
 
 function StepShell({ eyebrow, title, description, step, children }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background p-6">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top,_rgba(6,182,212,0.16),_transparent_55%)]"
-      />
-      <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] max-w-2xl flex-col justify-center">
+    <main className="grid min-h-screen place-items-center bg-background p-6">
+      <div className="w-full max-w-2xl">
         <Brandmark />
 
         {step ? <StepProgress step={step} /> : null}
 
-        <section className="mt-6 rounded-[28px] border border-border bg-card p-8 shadow-xl shadow-black/20">
+        <section className="mt-6 rounded-2xl border border-border bg-card p-8 shadow-xl">
           {eyebrow ? (
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary/80">{eyebrow}</p>
           ) : null}
