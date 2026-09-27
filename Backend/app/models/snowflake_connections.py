@@ -20,6 +20,7 @@ class SnowflakeConnection(Base):
     user_name = Column(Text, nullable=True)
     role_name = Column(Text, nullable=False)
     warehouse_name = Column(Text, nullable=False)
+    database_name = Column(Text, nullable=True)
     auth_method = Column(Text, nullable=False)
     secret_reference = Column(Text, nullable=False)
     status = Column(Text, nullable=False, server_default="pending")
