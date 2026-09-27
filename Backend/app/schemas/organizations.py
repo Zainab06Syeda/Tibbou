@@ -70,6 +70,10 @@ class OrganizationMembershipRead(BaseModel):
     created_at: datetime
 
 
+class MembershipRoleUpdate(BaseModel):
+    role: Literal["admin", "operator", "viewer"]
+
+
 class OrganizationInvitationCreate(BaseModel):
     email: str = Field(min_length=3, max_length=320)
     role: Literal["admin", "operator", "viewer"] = "viewer"

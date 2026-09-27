@@ -26,16 +26,9 @@ from app.schemas.organizations import (
     OrganizationRead,
 )
 from app.services.email import send_invitation_email
+from app.services.organizations import require_invitable_role as _require_invitable_role
 
 router = APIRouter(tags=["organization invitations"])
-
-
-def _require_invitable_role(access: OrganizationAccess, role: str) -> None:
-    if role == "admin" and access.role != "owner":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only owners can invite administrators",
-        )
 
 
 @router.get("/api/v1/invitations", response_model=list[OrganizationInvitationSummaryRead])
