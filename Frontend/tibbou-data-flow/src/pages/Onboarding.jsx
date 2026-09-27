@@ -1,13 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Building2,
-  Check,
-  FileJson,
-  Plug,
-  Sparkles,
-  UserPlus,
-  UploadCloud,
-} from "lucide-react";
+import { Check, UploadCloud } from "lucide-react";
 
 import {
   createInvitation,
@@ -18,96 +10,143 @@ import {
   requestToJoinByDomain,
 } from "@/api/tibbou";
 import ConnectionForm from "@/components/ConnectionForm";
+import TibbouLockup from "@/components/auth/TibbouLockup";
+import TibbouMark from "@/components/auth/TibbouMark";
+import "@/components/auth/login.css";
+import "./onboarding.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { cn } from "@/lib/utils";
 import { countDbtResources, emailDomain, isFreeEmailDomain, slugPreview } from "@/lib/organizations";
 
-const STEPS = [
-  { key: "organization", label: "Organization", icon: Building2 },
-  { key: "connection", label: "Connection", icon: Plug },
-  { key: "manifest", label: "dbt manifest", icon: FileJson },
-  { key: "invite", label: "Invite team", icon: UserPlus },
-  { key: "done", label: "Done", icon: Sparkles },
-];
+const STEPS = ["organization", "connection", "manifest", "invite", "done"];
 
-function Brandmark() {
+// Copy for the animated right-hand panel, keyed by wizard step -- this is
+// the "interactive, explain what this does" half of the page: plain-language
+// context for what's about to happen and why, aimed at non-technical users
+// rather than at the person who already knows what a dbt manifest is.
+const PANEL_CONTENT = {
+  entry: {
+    eyebrow: "GETTING STARTED",
+    headline: "One workspace for your whole team's data.",
+    body: "Tibbou connects to Snowflake and dbt so everyone can see what's running, what it costs, and how it's all connected — without writing SQL.",
+  },
+  organization: {
+    eyebrow: "STEP 1 OF 5 — ORGANIZATION",
+    headline: "This is your team's shared workspace.",
+    body: "Everything you connect next — Snowflake, dbt, teammates — lives inside this organization. Rename it or manage who's in it any time from Settings.",
+  },
+  connection: {
+    eyebrow: "STEP 2 OF 5 — CONNECTION",
+    headline: "We only read metadata, never your rows.",
+    body: "Tibbou connects to Snowflake to see which queries ran, how long they took, and what they cost — never the data inside your tables. Nothing you type here is stored, only a reference label.",
+  },
+  manifest: {
+    eyebrow: "STEP 3 OF 5 — DBT MANIFEST",
+    headline: "This is how Tibbou learns your data's shape.",
+    body: "Your dbt manifest lists every model and how they depend on each other. Uploading it lets Tibbou draw the map, so you can trace any number on a dashboard back to the model that produced it.",
+  },
+  invite: {
+    eyebrow: "STEP 4 OF 5 — TEAM",
+    headline: "Everyone sees the same source of truth.",
+    body: "Invite your team so they don't have to ask where a number came from — they can just look. Admins manage the connection; viewers can explore lineage and cost freely.",
+  },
+  done: {
+    eyebrow: "YOU'RE ALL SET",
+    headline: "Tibbou is now watching your warehouse.",
+    body: "As syncs run, datasets, lineage, and cost data will populate automatically. Come back to the dashboard any time to see what's changed.",
+  },
+};
+
+function StepDots({ current }) {
+  const index = STEPS.indexOf(current);
   return (
-    <div className="flex items-center">
-      <img src="/brand/tibbou-header-dark.gif" alt="Tibbou" className="h-9 w-auto" />
-      <p className="ml-3 border-l border-border pl-3 text-[11px] text-muted-foreground">
-        Data lineage and cost visibility
-      </p>
+    <div className="tb-steps" aria-hidden="true">
+      {STEPS.map((key, position) => (
+        <div key={key} style={{ display: "contents" }}>
+          <div
+            className={`tb-step ${
+              position < index ? "tb-step--done" : position === index ? "tb-step--active" : ""
+            }`}
+          >
+            {position < index ? <Check className="h-3 w-3" /> : position + 1}
+          </div>
+          {position < STEPS.length - 1 ? (
+            <div className={`tb-step-line ${position < index ? "tb-step-line--done" : ""}`} />
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
 
-function StepShell({ eyebrow, title, description, step, children }) {
+// The split shell shared with the (in-progress) sign-in page: form column on
+// the left, animated brand panel on the right. `step` both drives the dot
+// tracker and looks up the panel's explanatory copy above.
+function Shell({ step, title, lede, footer, children }) {
+  const panel = PANEL_CONTENT[step] || PANEL_CONTENT.entry;
   return (
-    <main className="grid min-h-screen place-items-center bg-background p-6">
-      <div className="w-full max-w-2xl">
-        <Brandmark />
+    <div className="tb-login" data-theme="dark">
+      <main className="tb-login__form-col">
+        <div className="tb-login__mark">
+          <TibbouLockup size={13} theme="dark" />
+        </div>
 
-        {step ? <StepProgress step={step} /> : null}
+        <div className="tb-login__form-wrap">
+          {STEPS.includes(step) ? <StepDots current={step} /> : null}
+          <h1 className="tb-login__title">{title}</h1>
+          {lede ? <p className="tb-login__lede">{lede}</p> : null}
+          {children}
+        </div>
 
-        <section className="mt-6 rounded-2xl border border-border bg-card p-8 shadow-xl">
-          {eyebrow ? (
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-primary/80">{eyebrow}</p>
-          ) : null}
-          <h1 className={cn("text-2xl font-semibold tracking-tight text-foreground", eyebrow && "mt-2")}>
-            {title}
-          </h1>
-          {description ? (
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-          ) : null}
-          <div className="mt-6">{children}</div>
-        </section>
-      </div>
-    </main>
-  );
-}
+        {footer ? <footer className="tb-login__footer">{footer}</footer> : null}
+      </main>
 
-function StepProgress({ step }) {
-  const index = STEPS.findIndex((item) => item.key === step);
+      <aside className="tb-panel">
+        <div className="tb-panel__glow" aria-hidden="true" />
+        <div className="tb-panel__glow tb-panel__glow--2" aria-hidden="true" />
+        <div className="tb-ghost tb-ghost--1" aria-hidden="true" />
+        <div className="tb-ghost tb-ghost--3" aria-hidden="true" />
 
-  return (
-    <div className="mt-8 flex items-center">
-      {STEPS.map((item, position) => {
-        const done = position < index;
-        const active = position === index;
-        return (
-          <div key={item.key} className="flex flex-1 items-center last:flex-initial">
-            <div className="flex flex-col items-center gap-2">
-              <div
-                className={cn(
-                  "flex h-8 w-8 items-center justify-center rounded-full border transition-colors",
-                  done && "border-primary bg-primary/20 text-primary",
-                  active && "border-primary bg-primary text-primary-foreground",
-                  !done && !active && "border-border bg-secondary/20 text-muted-foreground"
-                )}
-              >
-                {done ? <Check className="h-4 w-4" /> : <item.icon className="h-4 w-4" />}
-              </div>
-              <span
-                className={cn(
-                  "hidden text-[11px] font-medium sm:block",
-                  active ? "text-foreground" : "text-muted-foreground"
-                )}
-              >
-                {item.label}
-              </span>
+        <div className="tb-chip tb-chip--1" aria-hidden="true">
+          models traced <strong>128</strong>
+        </div>
+        <div className="tb-chip tb-chip--3" aria-hidden="true">
+          last sync <strong>2m ago</strong>
+        </div>
+        <div className="tb-chip tb-chip--4" aria-hidden="true">
+          rows scanned <strong>12,482</strong>
+        </div>
+        <div className="tb-scrap tb-scrap--2" aria-hidden="true">warehouse: analytics_wh</div>
+
+        <div className="tb-panel__eyebrow">{panel.eyebrow}</div>
+
+        <div className="tb-panel__visual" aria-hidden="true">
+          <TibbouMark size={80} theme="dark" className="tb-panel__mark" />
+          <div className="tb-rows">
+            <div className="tb-row">
+              <span className="tb-row__name">stg_orders</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--a" /></div>
             </div>
-            {position < STEPS.length - 1 ? (
-              <span
-                className={cn(
-                  "mx-2 h-px flex-1 sm:-mt-5",
-                  position < index ? "bg-primary" : "bg-border"
-                )}
-              />
-            ) : null}
+            <div className="tb-row">
+              <span className="tb-row__name">fct_revenue</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--b" /></div>
+            </div>
+            <div className="tb-row">
+              <span className="tb-row__name">dim_customers</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--c" /></div>
+            </div>
+            <div className="tb-row">
+              <span className="tb-row__name">mart_orders_daily</span>
+              <div className="tb-row__track"><div className="tb-row__fill tb-row__fill--d" /></div>
+            </div>
           </div>
-        );
-      })}
+        </div>
+
+        <div className="tb-panel__copy">
+          <p className="tb-panel__headline">{panel.headline}</p>
+          <p className="tb-panel__body">{panel.body}</p>
+        </div>
+      </aside>
     </div>
   );
 }
@@ -178,109 +217,93 @@ function EntryStep({ onOrganizationReady, onCreateNew }) {
 
   if (loading) {
     return (
-      <StepShell eyebrow="Tibbou onboarding" title="Loading your workspace…">
-        <div className="flex items-center justify-center py-6">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+      <Shell step="entry" title="Loading your workspace…">
+        <div className="tb-row-actions" style={{ justifyContent: "center", padding: "24px 0" }}>
+          <div className="tb-spinner" />
         </div>
-      </StepShell>
+      </Shell>
     );
   }
 
   const alreadyRequested = requested || domainMatch?.already_requested;
 
   return (
-    <StepShell eyebrow="Tibbou onboarding" title="Welcome to Tibbou" description="Let's get you into a workspace.">
-      {domainMatch?.organization ? (
-        <article className="rounded-xl border border-border bg-secondary/20 p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/20">
-              <Building2 className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-sm font-medium text-foreground">
-                {domainMatch.organization.name} already uses Tibbou
-              </h2>
-              <p className="text-xs text-muted-foreground">{domainMatch.organization.slug}</p>
-            </div>
-          </div>
-          {domainMatch.allow_domain_join ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleJoin}
-              className="mt-4 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? "Joining…" : "Join this organization"}
-            </button>
-          ) : alreadyRequested ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Your request to join is pending. An admin will need to approve it.
-            </p>
-          ) : (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={handleRequestToJoin}
-              className="mt-4 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary/40"
-            >
-              {busy ? "Requesting…" : "Request to join"}
-            </button>
-          )}
-        </article>
-      ) : null}
-
-      {invitations.length ? (
-        <div className="mt-4 space-y-3">
-          {invitations.map((invitation) => (
-            <article key={invitation.id} className="rounded-xl border border-border bg-secondary/20 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/20">
-                  <UserPlus className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-medium text-foreground">{invitation.organization_name}</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {invitation.organization_slug} · {invitation.role}
-                  </p>
-                </div>
+    <Shell
+      step="entry"
+      title="Welcome to Tibbou"
+      lede="Let's get you into a workspace."
+      footer={
+        <span>
+          <button type="button" onClick={signOut} className="tb-link" style={{ background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit" }}>
+            Sign out ({user?.email})
+          </button>
+        </span>
+      }
+    >
+      <div className="tb-stack">
+        {domainMatch?.organization ? (
+          <div className="tb-card">
+            <div className="tb-card__row">
+              <TibbouMark size={28} theme="dark" />
+              <div>
+                <p className="tb-card__title">{domainMatch.organization.name} already uses Tibbou</p>
+                <p className="tb-card__meta">{domainMatch.organization.slug}</p>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Expires {new Date(invitation.expires_at).toLocaleString()}
-              </p>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => handleAcceptInvitation(invitation.id)}
-                className="mt-4 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {busy ? "Joining…" : "Join organization"}
+            </div>
+            {domainMatch.allow_domain_join ? (
+              <button type="button" disabled={busy} onClick={handleJoin} className="tb-btn tb-btn--primary" style={{ marginTop: 16 }}>
+                {busy ? "Joining…" : "Join this organization"}
               </button>
-            </article>
-          ))}
-        </div>
-      ) : null}
+            ) : alreadyRequested ? (
+              <p className="tb-text-muted" style={{ marginTop: 16 }}>
+                Your request to join is pending. An admin will need to approve it.
+              </p>
+            ) : (
+              <button type="button" disabled={busy} onClick={handleRequestToJoin} className="tb-btn tb-btn--secondary" style={{ marginTop: 16 }}>
+                {busy ? "Requesting…" : "Request to join"}
+              </button>
+            )}
+          </div>
+        ) : null}
 
-      {actionError ? <p className="mt-4 text-sm text-red-300">{actionError}</p> : null}
+        {invitations.map((invitation) => (
+          <div key={invitation.id} className="tb-card">
+            <div className="tb-card__row">
+              <TibbouMark size={28} theme="dark" />
+              <div>
+                <p className="tb-card__title">{invitation.organization_name}</p>
+                <p className="tb-card__meta">{invitation.organization_slug} · {invitation.role}</p>
+              </div>
+            </div>
+            <p className="tb-card__meta" style={{ marginTop: 12 }}>
+              Expires {new Date(invitation.expires_at).toLocaleString()}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleAcceptInvitation(invitation.id)}
+              className="tb-btn tb-btn--primary"
+              style={{ marginTop: 16 }}
+            >
+              {busy ? "Joining…" : "Join organization"}
+            </button>
+          </div>
+        ))}
 
-      <div className="mt-6 border-t border-border pt-6">
-        <p className="text-sm text-muted-foreground">
+        {actionError ? <p className="tb-login__error" role="alert">{actionError}</p> : null}
+      </div>
+
+      <div className="tb-section-divider">
+        <p className="tb-text-muted">
           {domainMatch?.organization
             ? "Starting something separate from your team's workspace?"
             : "No invitations or matching workspace found."}
         </p>
-        <button
-          type="button"
-          onClick={onCreateNew}
-          className="mt-3 rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary/40"
-        >
+        <button type="button" onClick={onCreateNew} className="tb-btn tb-btn--secondary" style={{ marginTop: 12 }}>
           Create a new organization
         </button>
       </div>
-
-      <button type="button" onClick={signOut} className="mt-6 block text-sm text-muted-foreground underline hover:text-foreground">
-        Sign out ({user?.email})
-      </button>
-    </StepShell>
+    </Shell>
   );
 }
 
@@ -315,15 +338,10 @@ function OrganizationStep({ onCreated }) {
   }
 
   return (
-    <StepShell
-      eyebrow="Step 1 of 5"
-      step="organization"
-      title="Create your organization"
-      description="This becomes the workspace your team's data lives in."
-    >
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="text-sm font-medium text-foreground" htmlFor="org-name">Organization name</label>
+    <Shell step="organization" title="Create your organization" lede="This becomes the workspace your team's data lives in.">
+      <form className="tb-login__form" onSubmit={handleSubmit} noValidate>
+        <div className="tb-field">
+          <label className="tb-field__label" htmlFor="org-name">Organization name</label>
           <input
             id="org-name"
             required
@@ -331,41 +349,38 @@ function OrganizationStep({ onCreated }) {
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Acme Inc."
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+            className="tb-field__input"
           />
-          {name ? (
-            <p className="mt-1 text-xs text-muted-foreground">URL slug: {slugPreview(name)}</p>
-          ) : null}
+          {name ? <p className="tb-text-muted">URL slug: {slugPreview(name)}</p> : null}
         </div>
+
         {canClaimDomain ? (
-          <label className="flex items-start gap-2 rounded-xl border border-border bg-secondary/20 p-4 text-sm">
+          <label className="tb-check" style={{ alignItems: "flex-start" }}>
             <input
               type="checkbox"
               checked={allowDomainJoin}
               onChange={(event) => setAllowDomainJoin(event.target.checked)}
-              className="mt-1 accent-primary"
+              style={{ marginTop: 2 }}
             />
-            <span className="text-foreground">
-              Let anyone with an <span className="font-mono text-primary">@{domain}</span> email join
-              automatically, without needing an invite.
+            <span>
+              Let anyone with an <strong>@{domain}</strong> email join automatically, without needing
+              an invite.
             </span>
           </label>
         ) : (
-          <p className="rounded-xl border border-border bg-secondary/20 p-4 text-xs text-muted-foreground">
+          <p className="tb-hint">
             Your email domain is a personal provider, so this organization won't claim a domain — invite
             teammates by email instead.
           </p>
         )}
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={submitting || !name.trim()}
-          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+
+        {error ? <p className="tb-login__error" role="alert">{error}</p> : null}
+
+        <button type="submit" disabled={submitting || !name.trim()} className="tb-btn tb-btn--primary">
           {submitting ? "Creating…" : "Create organization"}
         </button>
       </form>
-    </StepShell>
+    </Shell>
   );
 }
 
@@ -374,14 +389,13 @@ function OrganizationStep({ onCreated }) {
 // ---------------------------------------------------------------------------
 function ConnectionStep({ onConnected }) {
   return (
-    <StepShell
-      eyebrow="Step 2 of 5"
+    <Shell
       step="connection"
       title="Connect Snowflake"
-      description="Required — Tibbou reads query and lineage metadata from this connection. Nothing you type here is stored; only a reference label is saved."
+      lede="Required — Tibbou reads query and lineage metadata from this connection. Nothing you type here is stored; only a reference label is saved."
     >
       <ConnectionForm onSaved={onConnected} />
-    </StepShell>
+    </Shell>
   );
 }
 
@@ -432,59 +446,32 @@ function ManifestStep({ onDone }) {
   }
 
   return (
-    <StepShell
-      eyebrow="Step 3 of 5"
-      step="manifest"
-      title="Upload your dbt manifest"
-      description="target/manifest.json from your dbt project."
-    >
-      <label
-        htmlFor="dbt-manifest"
-        className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-secondary/20 px-4 py-8 text-center transition-colors hover:border-primary/60 hover:bg-secondary/30"
-      >
-        <UploadCloud className="h-6 w-6 text-primary" />
-        <span className="text-sm font-medium text-foreground">
-          {fileName || "Click to choose manifest.json"}
-        </span>
-        <span className="text-xs text-muted-foreground">JSON file, generated by `dbt compile` or `dbt run`</span>
-        <input
-          id="dbt-manifest"
-          type="file"
-          accept="application/json,.json"
-          onChange={handleFile}
-          className="sr-only"
-        />
-      </label>
-      {parseError ? <p className="mt-3 text-sm text-red-300">{parseError}</p> : null}
-      {resourceCount !== null ? (
-        <p className="mt-3 flex items-center gap-1.5 text-sm text-emerald-400">
-          <Check className="h-4 w-4" /> Valid manifest — {resourceCount} models found.
-        </p>
-      ) : null}
-      {submitError ? <p className="mt-3 text-sm text-red-300">{submitError}</p> : null}
-      {queued ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Queued for processing — lineage and datasets will appear shortly.
-        </p>
-      ) : null}
-      <div className="mt-6 flex gap-3">
-        <button
-          type="button"
-          disabled={!manifest || submitting || queued}
-          onClick={handleSubmit}
-          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Uploading…" : queued ? "Uploaded" : "Upload manifest"}
-        </button>
-        <button
-          type="button"
-          onClick={onDone}
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary/40"
-        >
-          {queued ? "Continue" : "Skip for now"}
-        </button>
+    <Shell step="manifest" title="Upload your dbt manifest" lede="target/manifest.json from your dbt project.">
+      <div className="tb-stack">
+        <label htmlFor="dbt-manifest" className="tb-dropzone">
+          <UploadCloud className="h-6 w-6" />
+          <span className="tb-dropzone__title">{fileName || "Click to choose manifest.json"}</span>
+          <span className="tb-dropzone__hint">JSON file, generated by `dbt compile` or `dbt run`</span>
+          <input id="dbt-manifest" type="file" accept="application/json,.json" onChange={handleFile} className="sr-only" />
+        </label>
+
+        {parseError ? <p className="tb-login__error" role="alert">{parseError}</p> : null}
+        {resourceCount !== null ? (
+          <p className="tb-text-success"><Check className="h-4 w-4" /> Valid manifest — {resourceCount} models found.</p>
+        ) : null}
+        {submitError ? <p className="tb-login__error" role="alert">{submitError}</p> : null}
+        {queued ? <p className="tb-text-muted">Queued for processing — lineage and datasets will appear shortly.</p> : null}
+
+        <div className="tb-row-actions">
+          <button type="button" disabled={!manifest || submitting || queued} onClick={handleSubmit} className="tb-btn tb-btn--primary">
+            {submitting ? "Uploading…" : queued ? "Uploaded" : "Upload manifest"}
+          </button>
+          <button type="button" onClick={onDone} className="tb-btn tb-btn--secondary">
+            {queued ? "Continue" : "Skip for now"}
+          </button>
+        </div>
       </div>
-    </StepShell>
+    </Shell>
   );
 }
 
@@ -515,94 +502,69 @@ function InviteStep({ onDone }) {
   }
 
   return (
-    <StepShell
-      eyebrow="Step 4 of 5"
-      step="invite"
-      title="Invite your team"
-      description="Optional — you can always invite people later from Members."
-    >
-      <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleInvite}>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="teammate@company.com"
-          className="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-        />
-        <select
-          value={role}
-          onChange={(event) => setRole(event.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-        >
-          <option value="admin">Admin</option>
-          <option value="operator">Operator</option>
-          <option value="viewer">Viewer</option>
-        </select>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-secondary/40 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Inviting…" : "Invite"}
+    <Shell step="invite" title="Invite your team" lede="Optional — you can always invite people later from Members.">
+      <div className="tb-stack">
+        <form className="tb-row-actions" onSubmit={handleInvite} style={{ flexWrap: "nowrap" }}>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="teammate@company.com"
+            className="tb-field__input"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <select value={role} onChange={(event) => setRole(event.target.value)} className="tb-field__input" style={{ width: "auto" }}>
+            <option value="admin">Admin</option>
+            <option value="operator">Operator</option>
+            <option value="viewer">Viewer</option>
+          </select>
+          <button type="submit" disabled={submitting} className="tb-btn tb-btn--secondary">
+            {submitting ? "Inviting…" : "Invite"}
+          </button>
+        </form>
+
+        {error ? <p className="tb-login__error" role="alert">{error}</p> : null}
+
+        {invited.length ? (
+          <ul className="tb-invited-list">
+            {invited.map((invitation) => (
+              <li key={invitation.id} className="tb-invited-item">
+                <span>{invitation.email} — {invitation.role}</span>
+                {invitation.email_sent ? (
+                  <span className="tb-text-success"><Check className="h-3.5 w-3.5" /> Sent</span>
+                ) : (
+                  <span className="tb-text-warn">Share sign-in link manually</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <button type="button" onClick={onDone} className="tb-btn tb-btn--primary">
+          {invited.length ? "Continue" : "Skip for now"}
         </button>
-      </form>
-      {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
-      {invited.length ? (
-        <ul className="mt-4 space-y-2">
-          {invited.map((invitation) => (
-            <li
-              key={invitation.id}
-              className="flex items-center justify-between rounded-xl border border-border bg-secondary/20 px-4 py-3 text-sm"
-            >
-              <span className="text-foreground">
-                {invitation.email} <span className="text-muted-foreground">— {invitation.role}</span>
-              </span>
-              {invitation.email_sent ? (
-                <span className="text-xs text-emerald-400">Sent</span>
-              ) : (
-                <span className="text-xs text-amber-300">Share sign-in link manually</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      <button
-        type="button"
-        onClick={onDone}
-        className="mt-6 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950"
-      >
-        {invited.length ? "Continue" : "Skip for now"}
-      </button>
-    </StepShell>
+      </div>
+    </Shell>
   );
 }
 
 function DoneStep({ onFinish }) {
   return (
-    <StepShell
-      eyebrow="Step 5 of 5"
-      step="done"
-      title="You're all set"
-      description="Your workspace is ready."
-    >
-      <div className="flex items-center gap-3 rounded-xl border border-border bg-secondary/20 p-4">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/20">
-          <Sparkles className="h-4 w-4 text-emerald-400" />
+    <Shell step="done" title="You're all set" lede="Your workspace is ready.">
+      <div className="tb-stack">
+        <div className="tb-card tb-card__row">
+          <TibbouMark size={28} theme="dark" />
+          <p className="tb-text-muted">
+            Tibbou is tracking your connection. Datasets, lineage, and cost data will populate as sync
+            runs complete.
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Tibbou is tracking your connection. Datasets, lineage, and cost data will populate as sync runs
-          complete.
-        </p>
+        <button type="button" onClick={onFinish} className="tb-btn tb-btn--primary">
+          Go to dashboard
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onFinish}
-        className="mt-6 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950"
-      >
-        Go to dashboard
-      </button>
-    </StepShell>
+    </Shell>
   );
 }
 
