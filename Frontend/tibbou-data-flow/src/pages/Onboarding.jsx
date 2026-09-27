@@ -79,28 +79,14 @@ function StepDots({ current }) {
   );
 }
 
-// The split shell shared with the (in-progress) sign-in page: form column on
-// the left, animated brand panel on the right. `step` both drives the dot
-// tracker and looks up the panel's explanatory copy above.
+// Shares its brand tokens and animated panel with the (in-progress) sign-in
+// page, but not its side-by-side layout: the panel fills the whole viewport
+// as a background, and the form sits in one centered, frosted-glass card on
+// top of it. `step` drives both the dot tracker and the panel's copy below.
 function Shell({ step, title, lede, footer, children }) {
   const panel = PANEL_CONTENT[step] || PANEL_CONTENT.entry;
   return (
-    <div className="tb-login" data-theme="dark">
-      <main className="tb-login__form-col">
-        <div className="tb-login__mark">
-          <TibbouLockup size={13} theme="dark" />
-        </div>
-
-        <div className="tb-login__form-wrap">
-          {STEPS.includes(step) ? <StepDots current={step} /> : null}
-          <h1 className="tb-login__title">{title}</h1>
-          {lede ? <p className="tb-login__lede">{lede}</p> : null}
-          {children}
-        </div>
-
-        {footer ? <footer className="tb-login__footer">{footer}</footer> : null}
-      </main>
-
+    <div className="tb-login tb-login--onboard" data-theme="dark">
       <aside className="tb-panel">
         <div className="tb-panel__glow" aria-hidden="true" />
         <div className="tb-panel__glow tb-panel__glow--2" aria-hidden="true" />
@@ -147,6 +133,21 @@ function Shell({ step, title, lede, footer, children }) {
           <p className="tb-panel__body">{panel.body}</p>
         </div>
       </aside>
+
+      <div className="tb-onboard-center">
+        <main className="tb-onboard-card">
+          <div className="tb-onboard-card__mark">
+            <TibbouLockup size={13} theme="dark" />
+          </div>
+
+          {STEPS.includes(step) ? <StepDots current={step} /> : null}
+          <h1 className="tb-login__title">{title}</h1>
+          {lede ? <p className="tb-login__lede">{lede}</p> : null}
+          {children}
+
+          {footer ? <footer className="tb-onboard-card__footer">{footer}</footer> : null}
+        </main>
+      </div>
     </div>
   );
 }
