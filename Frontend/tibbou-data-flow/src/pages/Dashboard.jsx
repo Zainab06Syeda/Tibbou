@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Database, DollarSign, GitBranch, Radio } from "lucide-react";
 
 import { getDashboardData } from "@/api/tibbou";
+import SetupChecklist from "@/components/SetupChecklist";
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -118,6 +119,8 @@ export default function Dashboard() {
           </p>
         </div>
       </section>
+
+      <SetupChecklist />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
