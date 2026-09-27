@@ -40,6 +40,23 @@ class ApiSecurityTests(unittest.TestCase):
         )
         self.assertEqual(create_invitation_response.status_code, 401)
 
+        domain_match_response = self.client.get("/api/v1/organizations/domain-match")
+        self.assertEqual(domain_match_response.status_code, 401)
+        create_organization_response = self.client.post(
+            "/api/v1/organizations", json={"name": "Acme"}
+        )
+        self.assertEqual(create_organization_response.status_code, 401)
+        domain_join_response = self.client.post("/api/v1/organizations/domain-join")
+        self.assertEqual(domain_join_response.status_code, 401)
+        domain_join_request_response = self.client.post(
+            "/api/v1/organizations/domain-join-requests"
+        )
+        self.assertEqual(domain_join_request_response.status_code, 401)
+        list_join_requests_response = self.client.get(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/join-requests"
+        )
+        self.assertEqual(list_join_requests_response.status_code, 401)
+
     def test_database_ping_is_not_public(self):
         response = self.client.get("/db/ping")
         self.assertEqual(response.status_code, 401)
@@ -65,7 +82,11 @@ class ApiSecurityTests(unittest.TestCase):
         self.assertIn("/api/v1/organizations/{organization_id}/admin", paths)
         self.assertIn("/api/v1/invitations", paths)
         self.assertIn("/api/v1/invitations/{invitation_id}/accept", paths)
-        self.assertNotIn("post", paths["/api/v1/organizations"])
+        # Self-service organization creation was enabled as part of the
+        # org-onboarding feature (feat/org-onboarding) -- this used to assert
+        # the opposite (assertNotIn) back when a trusted operator had to
+        # create the first organization and owner.
+        self.assertIn("post", paths["/api/v1/organizations"])
         self.assertEqual(paths["/api/v1/organizations/{organization_id}/ingestion/dbt/manifest"]["post"]["responses"].get("202", {}).get("description"), "Successful Response")
 
 

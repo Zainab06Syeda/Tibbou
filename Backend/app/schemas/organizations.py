@@ -16,6 +16,52 @@ class OrganizationRead(BaseModel):
     created_at: datetime
 
 
+class OrganizationSummaryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    slug: str
+
+
+class OrganizationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    allow_domain_join: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Organization name is required")
+        return normalized
+
+
+class DomainMatchRead(BaseModel):
+    organization: OrganizationSummaryRead | None
+    allow_domain_join: bool
+    already_requested: bool
+
+
+class OrganizationJoinRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    organization_id: UUID
+    email: str
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class OrganizationJoinRequestSummaryRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    email: str
+    status: str
+    created_at: datetime
+
+
 class OrganizationMembershipRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
