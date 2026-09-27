@@ -31,6 +31,26 @@ export function getOrganizations() {
   return apiRequest("/api/v1/organizations");
 }
 
+export function getDomainMatch() {
+  return apiRequest("/api/v1/organizations/domain-match");
+}
+
+export function createOrganization(payload) {
+  return apiRequest("/api/v1/organizations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function joinOrganizationByDomain() {
+  return apiRequest("/api/v1/organizations/domain-join", { method: "POST" });
+}
+
+export function requestToJoinByDomain() {
+  return apiRequest("/api/v1/organizations/domain-join-requests", { method: "POST" });
+}
+
 export function getInvitations() {
   return apiRequest("/api/v1/invitations");
 }
@@ -69,6 +89,26 @@ export function getLineageEdges() {
 
 export function getCostSnapshots() {
   return apiRequest(organizationPath("/costs"));
+}
+
+export function listConnections() {
+  return apiRequest(organizationPath("/snowflake-connections"));
+}
+
+export function createConnection(payload) {
+  return apiRequest(organizationPath("/snowflake-connections"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testConnection(payload) {
+  return apiRequest(organizationPath("/snowflake-connections/test"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getLatestSnowflakeDatasetCreditSummaries() {

@@ -8,7 +8,13 @@ from app.auth import OrganizationAccess
 from app.db import get_db
 from app.models.snowflake_connections import SnowflakeConnection
 from app.permissions import require_capability
-from app.schemas.connections import SnowflakeConnectionCreate, SnowflakeConnectionRead
+from app.schemas.connections import (
+    SnowflakeConnectionCreate,
+    SnowflakeConnectionRead,
+    SnowflakeConnectionTestRequest,
+    SnowflakeConnectionTestResult,
+)
+from app.services.snowflake_test import test_connection as run_snowflake_connection_test
 
 router = APIRouter(
     prefix="/api/v1/organizations/{organization_id}/snowflake-connections",
@@ -49,6 +55,15 @@ def create_connection(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Connection name exists") from exc
     db.refresh(connection)
     return connection
+
+
+@router.post("/test", response_model=SnowflakeConnectionTestResult)
+def test_connection(
+    payload: SnowflakeConnectionTestRequest,
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
+) -> SnowflakeConnectionTestResult:
+    success, detail = run_snowflake_connection_test(payload)
+    return SnowflakeConnectionTestResult(success=success, detail=detail)
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
