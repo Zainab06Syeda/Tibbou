@@ -1,11 +1,31 @@
+import json
 import os
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tibbou")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 
 from app.auth import ORGANIZATION_ROLES
 from app.permissions import allowed_roles_for, has_permission
+
+BACKEND = Path(__file__).resolve().parents[1]
+CO_LOCATED_COPY = BACKEND / "app" / "permissions.json"
+CANONICAL_COPY = BACKEND.parent / "Database" / "permissions.json"
+
+
+class PermissionsFileSyncTests(unittest.TestCase):
+    def test_co_located_copy_matches_the_canonical_database_copy(self):
+        # app/permissions.py reads the copy next to it (app/permissions.json)
+        # because a deployment package only contains Backend/'s contents, not
+        # its sibling Database/ folder -- see app/permissions.py's docstring.
+        # If this ever fails, someone edited one copy without the other.
+        if not CANONICAL_COPY.exists():
+            self.skipTest("Database/permissions.json not present in this checkout")
+        self.assertEqual(
+            json.loads(CO_LOCATED_COPY.read_text(encoding="utf-8")),
+            json.loads(CANONICAL_COPY.read_text(encoding="utf-8")),
+        )
 
 
 class PermissionMatrixTests(unittest.TestCase):
