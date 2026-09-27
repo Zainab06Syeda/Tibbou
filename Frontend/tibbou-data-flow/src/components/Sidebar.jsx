@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import TibbouLockup from "@/components/auth/TibbouLockup";
+import TibbouMark from "@/components/auth/TibbouMark";
 import { useOrganization } from "@/contexts/OrganizationContext";
 import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -45,15 +47,12 @@ export default function Sidebar() {
     >
       <div className="flex h-16 items-center border-b border-sidebar-border px-4">
         <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/20">
-            <GitBranch className="h-4 w-4 text-primary" />
-          </div>
-          {!collapsed && (
+          {collapsed ? (
+            <TibbouMark size={6} theme="dark" className="flex-shrink-0" forceDot />
+          ) : (
             <div className="min-w-0">
-              <span className="whitespace-nowrap text-lg font-semibold tracking-tight text-foreground">
-                Tibbou
-              </span>
-              <p className="truncate text-[11px] text-sidebar-foreground">
+              <TibbouLockup size={9} theme="dark" className="text-foreground" />
+              <p className="mt-0.5 truncate text-[11px] text-sidebar-foreground">
                 Data lineage and cost visibility
               </p>
             </div>
