@@ -32,6 +32,7 @@ const roleConfig = {
 
 const MIN_ZOOM = 0.4;
 const MAX_ZOOM = 2.5;
+const DRAG_THRESHOLD_PX = 4;
 
 /**
  * Node role is inferred from graph topology, not stored data: a dataset
@@ -157,21 +158,38 @@ export default function LineageGraph({ nodes = [], edges = [] }) {
     setView((current) => ({ ...current, zoom: clampZoom(current.zoom - event.deltaY * 0.001) }));
   }, []);
 
+  // Pointer capture is only taken once the pointer has actually moved: capturing
+  // on pointerdown retargets the click to the container, so node clicks never fire.
   const handlePointerDown = useCallback((event) => {
-    dragRef.current = { startX: event.clientX, startY: event.clientY, originX: view.x, originY: view.y };
-    containerRef.current?.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: view.x,
+      originY: view.y,
+      pointerId: event.pointerId,
+      dragging: false,
+    };
   }, [view.x, view.y]);
 
   const handlePointerMove = useCallback((event) => {
-    if (!dragRef.current) return;
-    const dx = event.clientX - dragRef.current.startX;
-    const dy = event.clientY - dragRef.current.startY;
-    setView((current) => ({ ...current, x: dragRef.current.originX + dx, y: dragRef.current.originY + dy }));
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.dragging) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      drag.dragging = true;
+      containerRef.current?.setPointerCapture(drag.pointerId);
+    }
+    setView((current) => ({ ...current, x: drag.originX + dx, y: drag.originY + dy }));
   }, []);
 
-  const handlePointerUp = useCallback((event) => {
+  const handlePointerUp = useCallback(() => {
+    const drag = dragRef.current;
     dragRef.current = null;
-    containerRef.current?.releasePointerCapture(event.pointerId);
+    if (drag?.dragging && containerRef.current?.hasPointerCapture(drag.pointerId)) {
+      containerRef.current.releasePointerCapture(drag.pointerId);
+    }
   }, []);
 
   const zoomBy = (delta) => setView((current) => ({ ...current, zoom: clampZoom(current.zoom + delta) }));
