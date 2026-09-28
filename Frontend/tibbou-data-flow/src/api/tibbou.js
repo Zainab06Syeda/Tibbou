@@ -146,11 +146,32 @@ export function createConnection(payload) {
   });
 }
 
-export function testConnection(payload) {
-  return apiRequest(organizationPath("/snowflake-connections/test"), {
-    method: "POST",
+export function updateConnection(connectionId, payload) {
+  return apiRequest(organizationPath(`/snowflake-connections/${encodeURIComponent(connectionId)}`), {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+  });
+}
+
+export function validateConnection(connectionId) {
+  return apiRequest(
+    organizationPath(`/snowflake-connections/${encodeURIComponent(connectionId)}/validate`),
+    { method: "POST" }
+  );
+}
+
+export function disableConnection(connectionId) {
+  return apiRequest(organizationPath(`/snowflake-connections/${encodeURIComponent(connectionId)}`), {
+    method: "DELETE",
+  });
+}
+
+export function syncSnowflake(connectionId) {
+  return apiRequest(organizationPath("/ingestion/snowflake/query-usage"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ connection_id: connectionId }),
   });
 }
 

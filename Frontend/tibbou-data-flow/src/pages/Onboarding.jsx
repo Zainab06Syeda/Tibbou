@@ -38,7 +38,7 @@ const PANEL_CONTENT = {
   connection: {
     eyebrow: "STEP 2 OF 5 — CONNECTION",
     headline: "We only read metadata, never your rows.",
-    body: "Tibbou connects to Snowflake to see which queries ran, how long they took, and what they cost — never the data inside your tables. Nothing you type here is stored, only a reference label.",
+    body: "Tibbou connects to Snowflake to see which queries ran, how long they took, and what they cost — never the data inside your tables. You run two short scripts in Snowflake; Tibbou handles the login key for you.",
   },
   manifest: {
     eyebrow: "STEP 3 OF 5 — DBT MANIFEST",
@@ -385,7 +385,7 @@ function ConnectionStep({ onConnected, onSkip }) {
     <Shell
       step="connection"
       title="Connect Snowflake"
-      lede="Tibbou reads query and lineage metadata from this connection. Nothing you type here is stored; only a reference label is saved."
+      lede="Tibbou reads query history and cost metadata from this connection — never the data in your tables."
     >
       <ConnectionForm onSaved={onConnected} />
       <button type="button" onClick={onSkip} className="tb-btn tb-btn--secondary" style={{ marginTop: 16 }}>

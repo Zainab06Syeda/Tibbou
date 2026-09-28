@@ -36,11 +36,10 @@ export default function WorkspaceGate() {
       };
     }
     setConnectionChecked(false);
-    // Any non-disabled connection counts: it passed a live test before it
-    // could be saved. `enabled` only flips after a first successful sync, so
-    // gating on it kept every other member of the org stuck in onboarding.
+    // `enabled` is set by the validate step, org-wide, so every member of
+    // the org sees the same answer regardless of browser.
     listConnections()
-      .then((rows) => active && setHasConnection(rows.some((row) => row.status !== "disabled")))
+      .then((rows) => active && setHasConnection(rows.some((row) => row.enabled)))
       .catch(() => active && setHasConnection(false))
       .finally(() => active && setConnectionChecked(true));
     return () => {

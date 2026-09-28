@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { listConnections } from "@/api/tibbou";
+import { disableConnection, listConnections, syncSnowflake } from "@/api/tibbou";
 import ConnectionForm from "@/components/ConnectionForm";
 import { useOrganization } from "@/contexts/OrganizationContext";
 
@@ -19,11 +19,32 @@ export default function SettingsConnection() {
   const [connections, setConnections] = useState(null);
   const [error, setError] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
   function refresh() {
     listConnections()
       .then(setConnections)
       .catch((requestError) => setError(requestError.message || "Failed to load connections."));
+  }
+
+  async function act(connection, action) {
+    setBusyId(connection.id);
+    setError("");
+    setNotice("");
+    try {
+      if (action === "sync") {
+        await syncSnowflake(connection.id);
+        setNotice("Sync queued. New query and cost data usually appears within a few minutes (Snowflake's own usage views can lag by up to ~3 hours).");
+      } else {
+        await disableConnection(connection.id);
+        refresh();
+      }
+    } catch (requestError) {
+      setError(requestError.message || "Action failed.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   useEffect(() => {
@@ -38,12 +59,13 @@ export default function SettingsConnection() {
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary/80">Settings</p>
         <h1 className="mt-2 text-3xl font-semibold">Snowflake connection</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Credentials are never stored — only a reference label is saved. Rotating credentials means
-          testing and saving a new connection, then disabling the old one.
+          Tibbou signs in with a key it generated for this connection; the private half is stored
+          encrypted and never shown. It can read query history and costs, not the data in your tables.
         </p>
       </div>
 
       {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {notice ? <p className="text-sm text-emerald-300">{notice}</p> : null}
 
       <section className="rounded-2xl border border-border bg-card">
         <div className="border-b border-border px-5 py-4">
@@ -57,11 +79,12 @@ export default function SettingsConnection() {
                 <th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Status</th>
                 <th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Last verified</th>
                 <th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Last successful sync</th>
+                <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
               {connections === null ? (
-                <tr><td colSpan={4} className="px-5 py-4 text-sm text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={5} className="px-5 py-4 text-sm text-muted-foreground">Loading…</td></tr>
               ) : connections.length ? (
                 connections.map((connection) => (
                   <tr key={connection.id} className="border-b border-border/60 last:border-0">
@@ -74,10 +97,32 @@ export default function SettingsConnection() {
                     </td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(connection.last_validated_at)}</td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(connection.last_success_at)}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right text-sm">
+                      {connection.enabled ? (
+                        <button
+                          type="button"
+                          disabled={busyId === connection.id}
+                          onClick={() => act(connection, "sync")}
+                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 disabled:opacity-60"
+                        >
+                          Sync now
+                        </button>
+                      ) : null}
+                      {connection.status !== "disabled" ? (
+                        <button
+                          type="button"
+                          disabled={busyId === connection.id}
+                          onClick={() => act(connection, "disable")}
+                          className="ml-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-secondary/40 disabled:opacity-60"
+                        >
+                          Disable
+                        </button>
+                      ) : null}
+                    </td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={4} className="px-5 py-4 text-sm text-muted-foreground">No connections yet.</td></tr>
+                <tr><td colSpan={5} className="px-5 py-4 text-sm text-muted-foreground">No connections yet.</td></tr>
               )}
             </tbody>
           </table>
