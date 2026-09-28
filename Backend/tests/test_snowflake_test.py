@@ -144,5 +144,67 @@ class TestConnectionTests(unittest.TestCase):
         self.assertIn("private key", detail.lower())
 
 
+def _key_pair_payload(private_key_pem: str, passphrase: str | None = None):
+    return SnowflakeConnectionTestRequest(
+        account_identifier="acme",
+        role_name="TIBBOU_READER",
+        warehouse_name="TIBBOU_WH",
+        auth_method="key_pair",
+        private_key_pem=private_key_pem,
+        private_key_passphrase=passphrase,
+    )
+
+
+def _connects_with(pasted: str) -> bool:
+    fake_connection = _FakeConnection(("8.1.0", "TIBBOU_READER", "TIBBOU_WH"))
+    with patch("snowflake.connector.connect", return_value=fake_connection):
+        success, _detail = test_connection(_key_pair_payload(pasted))
+    return success
+
+
+class PastedPrivateKeyNormalizationTests(unittest.TestCase):
+    """Terminal copy/paste damages PEM framing without changing the key."""
+
+    def setUp(self):
+        self.pem = _generate_private_key_pem()
+
+    def test_trailing_spaces_and_crlf_from_windows_console(self):
+        padded = "\r\n".join(line + "      " for line in self.pem.splitlines())
+        self.assertTrue(_connects_with(padded))
+
+    def test_leading_indentation_and_surrounding_blank_lines(self):
+        indented = "\n\n" + "\n".join("  " + line for line in self.pem.splitlines()) + "\n\n"
+        self.assertTrue(_connects_with(indented))
+
+    def test_newlines_collapsed_into_spaces(self):
+        self.assertTrue(_connects_with(" ".join(self.pem.split())))
+
+    def test_body_pasted_without_begin_end_lines(self):
+        body = "\n".join(line for line in self.pem.splitlines() if "-----" not in line)
+        self.assertTrue(_connects_with(body))
+
+    def test_public_key_pasted_by_mistake_gets_a_specific_message(self):
+        public_pem = (
+            serialization.load_pem_private_key(self.pem.encode(), password=None)
+            .public_key()
+            .public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            .decode()
+        )
+
+        success, detail = test_connection(_key_pair_payload(public_pem))
+
+        self.assertFalse(success)
+        self.assertIn("public key", detail)
+
+    def test_passphrase_on_an_unencrypted_key_is_reported_not_raised(self):
+        success, detail = test_connection(_key_pair_payload(self.pem, passphrase="oops"))
+
+        self.assertFalse(success)
+        self.assertIn("private key", detail.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
