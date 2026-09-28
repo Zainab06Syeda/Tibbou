@@ -1,11 +1,9 @@
 import os
-from urllib.parse import urlparse
+from pathlib import Path
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
-
-load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -13,14 +11,24 @@ if not DATABASE_URL:
 
 engine_options = {
     "pool_pre_ping": True,
-    "pool_size": int(os.getenv("DATABASE_POOL_SIZE", "5")),
-    "max_overflow": int(os.getenv("DATABASE_MAX_OVERFLOW", "5")),
+    "pool_size": int(os.getenv("DATABASE_POOL_SIZE", "3")),
+    "max_overflow": int(os.getenv("DATABASE_MAX_OVERFLOW", "0")),
     "pool_recycle": 300,
 }
 if DATABASE_URL.startswith("postgresql"):
-    database_host = urlparse(DATABASE_URL).hostname
-    sslmode = "disable" if database_host in {"127.0.0.1", "localhost"} else "require"
-    engine_options["connect_args"] = {"sslmode": sslmode}
+    database_host = make_url(DATABASE_URL).host
+    if os.getenv("APP_ENV", "development").lower() == "production":
+        root_cert = os.getenv("DATABASE_SSL_ROOT_CERT", "")
+        if not root_cert or not Path(root_cert).is_file():
+            raise RuntimeError("DATABASE_SSL_ROOT_CERT must name an existing CA file")
+        engine_options["connect_args"] = {
+            "sslmode": "verify-full",
+            "sslrootcert": root_cert,
+        }
+    elif database_host in {"127.0.0.1", "localhost"}:
+        engine_options["connect_args"] = {"sslmode": "disable"}
+    else:
+        engine_options["connect_args"] = {"sslmode": "require"}
 
 engine = create_engine(DATABASE_URL, **engine_options)
 

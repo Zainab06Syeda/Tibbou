@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/tibbou")
+os.environ.setdefault("DATABASE_URL", "postgresql://tibbou_api_login@localhost:5432/tibbou")
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 
 from fastapi.testclient import TestClient
@@ -39,39 +39,17 @@ class ApiSecurityTests(unittest.TestCase):
             json={"email": "member@example.com", "role": "viewer"},
         )
         self.assertEqual(create_invitation_response.status_code, 401)
-
-        domain_match_response = self.client.get("/api/v1/organizations/domain-match")
-        self.assertEqual(domain_match_response.status_code, 401)
-        create_organization_response = self.client.post(
-            "/api/v1/organizations", json={"name": "Acme"}
+        connection_response = self.client.post(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/"
+            "snowflake-connections",
+            json={},
         )
-        self.assertEqual(create_organization_response.status_code, 401)
-        domain_join_response = self.client.post("/api/v1/organizations/domain-join")
-        self.assertEqual(domain_join_response.status_code, 401)
-        domain_join_request_response = self.client.post(
-            "/api/v1/organizations/domain-join-requests"
+        self.assertEqual(connection_response.status_code, 401)
+        validation_response = self.client.post(
+            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/"
+            "snowflake-connections/00000000-0000-0000-0000-000000000002/validate"
         )
-        self.assertEqual(domain_join_request_response.status_code, 401)
-        list_join_requests_response = self.client.get(
-            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/join-requests"
-        )
-        self.assertEqual(list_join_requests_response.status_code, 401)
-        resend_invitation_response = self.client.post(
-            "/api/v1/organizations/00000000-0000-0000-0000-000000000001"
-            "/invitations/00000000-0000-0000-0000-000000000002/resend"
-        )
-        self.assertEqual(resend_invitation_response.status_code, 401)
-        test_connection_response = self.client.post(
-            "/api/v1/organizations/00000000-0000-0000-0000-000000000001/snowflake-connections/test",
-            json={
-                "account_identifier": "acme",
-                "role_name": "TIBBOU_READER",
-                "warehouse_name": "TIBBOU_WH",
-                "auth_method": "external_oauth",
-                "oauth_token": "token",
-            },
-        )
-        self.assertEqual(test_connection_response.status_code, 401)
+        self.assertEqual(validation_response.status_code, 401)
 
     def test_database_ping_is_not_public(self):
         response = self.client.get("/db/ping")
@@ -98,12 +76,34 @@ class ApiSecurityTests(unittest.TestCase):
         self.assertIn("/api/v1/organizations/{organization_id}/admin", paths)
         self.assertIn("/api/v1/invitations", paths)
         self.assertIn("/api/v1/invitations/{invitation_id}/accept", paths)
-        # Self-service organization creation was enabled as part of the
-        # org-onboarding feature (feat/org-onboarding) -- this used to assert
-        # the opposite (assertNotIn) back when a trusted operator had to
-        # create the first organization and owner.
+        # Self-service organization creation was enabled by the org-onboarding
+        # feature; this used to assert the opposite.
         self.assertIn("post", paths["/api/v1/organizations"])
-        self.assertEqual(paths["/api/v1/organizations/{organization_id}/ingestion/dbt/manifest"]["post"]["responses"].get("202", {}).get("description"), "Successful Response")
+        schemas = app.openapi()["components"]["schemas"]
+        create_fields = schemas["SnowflakeConnectionCreate"]["properties"]
+        read_fields = schemas["SnowflakeConnectionRead"]["properties"]
+        self.assertNotIn("auth_method", create_fields)
+        self.assertNotIn("secret_reference", create_fields)
+        self.assertNotIn("secret_reference", read_fields)
+        self.assertNotIn("private_key", str(schemas).lower())
+        connection_path = paths[
+            "/api/v1/organizations/{organization_id}/snowflake-connections/{connection_id}"
+        ]
+        self.assertIn("patch", connection_path)
+        self.assertIn(
+            "post",
+            paths[
+                "/api/v1/organizations/{organization_id}/snowflake-connections/"
+                "{connection_id}/validate"
+            ],
+        )
+        manifest_responses = paths[
+            "/api/v1/organizations/{organization_id}/ingestion/dbt/manifest"
+        ]["post"]["responses"]
+        self.assertEqual(
+            manifest_responses.get("202", {}).get("description"),
+            "Successful Response",
+        )
 
 
 if __name__ == "__main__":

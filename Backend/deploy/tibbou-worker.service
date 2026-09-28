@@ -1,0 +1,20 @@
+[Unit]
+Description=Tibbou ingestion worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=tibbou
+Group=tibbou
+WorkingDirectory=/opt/tibbou/current
+Environment=APP_ENV=production
+EnvironmentFile=/etc/tibbou/worker.env
+ExecStart=/opt/tibbou/venv/bin/python -m app.worker
+Restart=always
+RestartSec=5
+TimeoutStopSec=900
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
