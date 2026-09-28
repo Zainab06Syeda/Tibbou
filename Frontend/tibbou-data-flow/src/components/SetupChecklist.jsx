@@ -30,7 +30,7 @@ export default function SetupChecklist() {
   useEffect(() => {
     if (!canSeeChecklist || !organization?.id) return;
     listConnections()
-      .then((rows) => setConnectionEnabled(rows.some((row) => row.enabled)))
+      .then((rows) => setConnectionEnabled(rows.some((row) => row.status !== "disabled")))
       .catch(() => setConnectionEnabled(false));
     getLatestDbtManifestIngestionSummary()
       .then(() => setManifestUploaded(true))

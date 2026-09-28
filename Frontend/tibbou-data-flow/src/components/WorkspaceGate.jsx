@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 
 import { listConnections } from "@/api/tibbou";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { hasPermission } from "@/lib/permissions";
 import Onboarding from "@/pages/Onboarding";
 
 // Connecting Snowflake is skippable from the wizard -- once skipped for an
@@ -35,8 +36,11 @@ export default function WorkspaceGate() {
       };
     }
     setConnectionChecked(false);
+    // Any non-disabled connection counts: it passed a live test before it
+    // could be saved. `enabled` only flips after a first successful sync, so
+    // gating on it kept every other member of the org stuck in onboarding.
     listConnections()
-      .then((rows) => active && setHasConnection(rows.some((row) => row.enabled)))
+      .then((rows) => active && setHasConnection(rows.some((row) => row.status !== "disabled")))
       .catch(() => active && setHasConnection(false))
       .finally(() => active && setConnectionChecked(true));
     return () => {
@@ -50,7 +54,10 @@ export default function WorkspaceGate() {
   if (error) {
     return <div className="grid min-h-screen place-items-center text-red-300">{error}</div>;
   }
-  if (organization && (hasConnection || skipped)) return <Outlet />;
+  // Only people who can set up a connection are asked to; everyone else in
+  // an org without one goes straight in (SetupChecklist nudges the admins).
+  const canSetUpConnection = hasPermission(organization?.role, "manage_connection");
+  if (organization && (hasConnection || skipped || !canSetUpConnection)) return <Outlet />;
 
   return (
     <Onboarding
