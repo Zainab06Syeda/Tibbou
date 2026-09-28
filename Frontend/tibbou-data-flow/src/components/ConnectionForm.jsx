@@ -3,20 +3,28 @@ import { useMemo, useState } from "react";
 import { createConnection, testConnection } from "@/api/tibbou";
 import { leastPrivilegeSql, slugPreview } from "@/lib/organizations";
 
-const MAC_LINUX_KEYGEN = `openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
-openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
-cat rsa_key.p8
-cat rsa_key.pub`;
-
-// Deliberately not piped: Windows PowerShell 5.1 can mangle text piped
-// between two native (non-PowerShell) processes, which corrupts the PEM
-// framing. Writing each step to a file and reading it back sidesteps that.
-const WINDOWS_KEYGEN = `$openssl = "C:\\Program Files\\Git\\usr\\bin\\openssl.exe"
+// Copying keys out of a terminal window damages them (the legacy Windows
+// console pads every copied line with spaces), and the public key goes
+// straight into Snowflake's SQL where nothing can clean it up. So each
+// copy step puts the file contents directly on the clipboard instead.
+const KEYGEN = {
+  mac: {
+    generate: `openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub`,
+    copyPublic: `grep -v -- '-----' rsa_key.pub | tr -d '\\n' | pbcopy`,
+    copyPrivate: `pbcopy < rsa_key.p8`,
+  },
+  // Deliberately not piped between openssl calls: Windows PowerShell 5.1
+  // can mangle text piped between two native processes.
+  windows: {
+    generate: `$openssl = "C:\\Program Files\\Git\\usr\\bin\\openssl.exe"
 & $openssl genrsa -out rsa_key_raw.pem 2048
 & $openssl pkcs8 -topk8 -inform PEM -in rsa_key_raw.pem -out rsa_key.p8 -nocrypt
-& $openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub
-Get-Content rsa_key.p8
-Get-Content rsa_key.pub`;
+& $openssl rsa -in rsa_key.p8 -pubout -out rsa_key.pub`,
+    copyPublic: `(Get-Content rsa_key.pub | Where-Object { $_ -notmatch '-----' }) -join '' | Set-Clipboard`,
+    copyPrivate: `Get-Content rsa_key.p8 -Raw | Set-Clipboard`,
+  },
+};
 
 // A copyable shell snippet -- used for both the keygen commands here and
 // (via the same pattern) the setup SQL above.
@@ -69,6 +77,9 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [sqlCopied, setSqlCopied] = useState(false);
+  const [keygenOs, setKeygenOs] = useState(
+    typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "mac" : "windows"
+  );
 
   function update(field) {
     return (event) => {
@@ -238,31 +249,56 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
                 Don't have a private key yet? Generate one
               </summary>
               <p className="mt-2 text-xs text-muted-foreground">
-                Snowflake doesn't hand you a private key — you generate one yourself, keep it, and
-                give Snowflake only the public half (paste it into the <span className="font-mono">rsa_public_key</span>{" "}
-                line in the setup SQL above). Run one of these in a terminal on your own computer.
+                Snowflake doesn't hand you a private key — you generate a pair yourself, keep the
+                private half, and give Snowflake only the public half. Run these in a terminal on your
+                own computer, one step at a time.
               </p>
 
-              <p className="mt-3 text-xs font-medium">macOS / Linux</p>
-              <CopyBlock code={MAC_LINUX_KEYGEN} />
+              <div className="mt-3 flex gap-2 text-xs">
+                {[
+                  ["windows", "Windows (PowerShell)"],
+                  ["mac", "macOS"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setKeygenOs(value)}
+                    className={`rounded-md border px-3 py-1.5 font-medium ${
+                      keygenOs === value ? "border-primary text-foreground" : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-              <p className="mt-3 text-xs font-medium">Windows (PowerShell)</p>
-              <CopyBlock code={WINDOWS_KEYGEN} />
+              <p className="mt-4 text-xs font-medium">Step 1 — Create the key pair</p>
+              <CopyBlock code={KEYGEN[keygenOs].generate} />
+              {keygenOs === "windows" ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Uses the OpenSSL that comes with Git for Windows. If that path doesn't exist, install
+                  Git for Windows first.
+                </p>
+              ) : null}
+
+              <p className="mt-4 text-xs font-medium">Step 2 — Give Snowflake the public key</p>
+              <CopyBlock code={KEYGEN[keygenOs].copyPublic} />
               <p className="mt-1 text-xs text-muted-foreground">
-                Uses the OpenSSL bundled with Git for Windows. If that path doesn't exist, install{" "}
-                <span className="font-mono">Git for Windows</span> first, or ask someone who manages
-                your computer for a key generated with <span className="font-mono">openssl genrsa</span>.
+                This copies the public key to your clipboard. Paste it between the quotes on the{" "}
+                <span className="font-mono">alter user ... rsa_public_key</span> line in the setup SQL
+                above, then run that SQL in Snowflake.
               </p>
 
-              <p className="mt-3 text-xs text-muted-foreground">
-                Paste the <strong>entire</strong> output of the first file (including the BEGIN/END
-                lines) into the field below. From the second file, copy only the base64 lines
-                <em> between</em> BEGIN/END — no header or footer — into the SQL above.
+              <p className="mt-4 text-xs font-medium">Step 3 — Give Tibbou the private key</p>
+              <CopyBlock code={KEYGEN[keygenOs].copyPrivate} />
+              <p className="mt-1 text-xs text-muted-foreground">
+                This copies the private key to your clipboard. Paste it into the field below.
               </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Getting a "could not read the private key" / "MalformedFraming" error? The paste is
-                missing or has extra lines — re-copy directly from your terminal's output rather than
-                retyping it, and make sure nothing was added before the first line or after the last.
+
+              <p className="mt-4 text-xs text-muted-foreground">
+                Seeing "JWT token is invalid" when you test? Snowflake has a different public key than
+                the private key you pasted — usually because the keys were regenerated after the SQL was
+                run. Repeat steps 2 and 3 with the same pair of files.
               </p>
             </details>
 

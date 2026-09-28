@@ -66,9 +66,10 @@ grant select on all tables in database ${database} to role ${role};
 grant select on future tables in database ${database} to role ${role};
 
 -- Key-pair auth is preferred over password. Generate a keypair, then:
-create user if not exists tibbou_svc
-  default_role = ${role}
-  rsa_public_key = '<paste the PUBLIC key here, PEM body only, no headers>';
+create user if not exists tibbou_svc default_role = ${role};
+-- Separate ALTER so re-running this after regenerating keys actually
+-- replaces the key ("create ... if not exists" skips existing users).
+alter user tibbou_svc set rsa_public_key = '<paste the PUBLIC key here, PEM body only, no headers>';
 
 grant role ${role} to user tibbou_svc;`;
 }
