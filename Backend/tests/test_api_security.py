@@ -71,6 +71,7 @@ class ApiSecurityTests(unittest.TestCase):
 
     def test_openapi_exposes_only_tenant_scoped_business_routes(self):
         paths = app.openapi()["paths"]
+        self.assertIn("post", paths["/api/v1/organizations/{organization_id}/costs"])
         self.assertNotIn("/datasets", paths)
         self.assertIn("/api/v1/organizations/{organization_id}/datasets", paths)
         self.assertIn("/api/v1/organizations/{organization_id}/admin", paths)

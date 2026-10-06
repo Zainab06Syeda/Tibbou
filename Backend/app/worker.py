@@ -30,7 +30,8 @@ from app.auth import set_request_user_context
 from app.db import SessionLocal, engine
 from app.models.raw_ingestions import RawIngestion
 from app.models.sync_runs import SyncRun
-from app.services.ingestion import process_dbt_manifest, process_snowflake_sync, utcnow
+from app.services.ingestion import build_credit_summary, process_dbt_manifest, process_snowflake_sync, utcnow
+from app.services.snowflake import SnowflakeValidationError
 
 MAX_ATTEMPTS = 3
 logger = logging.getLogger(__name__)
@@ -89,7 +90,9 @@ def _claim_next_run(connection, backend_pid: int) -> tuple[object, object, objec
         return row.id, row.organization_id, row.requested_by, attempt_count
 
 
-def _safe_failure_message(run_type: str) -> str:
+def _safe_failure_message(run_type: str, exc: Exception) -> str:
+    if isinstance(exc, SnowflakeValidationError):
+        return str(exc)
     if run_type == "snowflake_query_usage_ingestion":
         return "Snowflake synchronization failed; review restricted worker logs"
     return "Artifact processing failed; review restricted worker logs"
@@ -122,7 +125,10 @@ def process_next_run(connection, backend_pid: int) -> bool:
                 result = process_dbt_manifest(db, run, raw)
                 final_status = "success"
             elif run.run_type == "snowflake_query_usage_ingestion":
-                result = process_snowflake_sync(db, run)
+                result = process_snowflake_sync(
+                    db, run,
+                    lambda: _assert_run_ownership(db, backend_pid, run_id, attempt_count),
+                )
                 final_status = "success" if result["access_history_available"] else "partial"
             else:
                 raise RuntimeError("Unsupported sync run type")
@@ -132,9 +138,15 @@ def process_next_run(connection, backend_pid: int) -> bool:
             # changes attempt_count, so stale work cannot publish after reconnect.
             _assert_run_ownership(db, backend_pid, run_id, attempt_count)
             run = db.get(SyncRun, run_id)
+            published_summary = (
+                build_credit_summary(db, run, result["access_history_available"])
+                if run.run_type == "snowflake_query_usage_ingestion" else None
+            )
             run.status = final_status
             run.finished_at = utcnow()
             run.details = {**(run.details or {}), **result}
+            if published_summary is not None:
+                run.details = {**run.details, "published_summary": published_summary}
             if raw is not None:
                 raw = db.get(RawIngestion, raw.id)
                 raw.status = final_status
@@ -154,7 +166,7 @@ def process_next_run(connection, backend_pid: int) -> bool:
             _set_context(db, requested_by, organization_id)
             _assert_run_ownership(db, backend_pid, run_id, attempt_count)
             run = db.get(SyncRun, run_id)
-            message = _safe_failure_message(run.run_type)
+            message = _safe_failure_message(run.run_type, exc)
             if run.attempt_count < MAX_ATTEMPTS:
                 run.status = "queued"
                 run.queued_at = utcnow() + timedelta(minutes=5 * run.attempt_count)

@@ -239,6 +239,31 @@ class DeploymentReadinessTests(unittest.TestCase):
         self.assertEqual(raw.status, "failed")
         self.assertEqual(session.commit.call_count, 2)
 
+    def test_snowflake_report_and_success_status_publish_in_one_commit(self):
+        run = SimpleNamespace(
+            id="run-1", run_type="snowflake_query_usage_ingestion", status="running",
+            details={"period_end": "2026-09-24T00:00:00+00:00"}, finished_at=None,
+        )
+        session = MagicMock()
+        session.get.return_value = run
+        session.query.return_value.filter.return_value.one_or_none.return_value = None
+        factory = MagicMock()
+        factory.return_value.__enter__.return_value = session
+        report = {"total_credits": "2", "dataset_credit_summaries": []}
+        with (
+            patch.object(worker, "_claim_next_run", return_value=(run.id, "org", "user", 1)),
+            patch.object(worker, "SessionLocal", factory),
+            patch.object(worker, "_set_context"),
+            patch.object(worker, "_assert_run_ownership"),
+            patch.object(worker, "process_snowflake_sync", return_value={"access_history_available": True}),
+            patch.object(worker, "build_credit_summary", return_value=report) as summarize,
+        ):
+            self.assertTrue(worker.process_next_run(MagicMock(), 1234))
+        summarize.assert_called_once_with(session, run, True)
+        self.assertEqual(run.status, "success")
+        self.assertEqual(run.details["published_summary"], report)
+        session.commit.assert_called_once_with()
+
     def test_lock_session_and_claim_attempt_are_fenced(self):
         db = MagicMock()
         db.execute.return_value.scalar_one.return_value = False

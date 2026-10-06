@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -5,9 +6,17 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SNOWFLAKE_IDENTIFIER_PATTERN = r"^[A-Za-z_][A-Za-z0-9_$]{0,254}$"
+SNOWFLAKE_ACCOUNT_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*){0,2}$"
 BLOCKED_ROLES = frozenset(
     {"ACCOUNTADMIN", "ORGADMIN", "SECURITYADMIN", "SYSADMIN", "USERADMIN", "PUBLIC"}
 )
+
+
+def normalize_account_identifier(value: str) -> str:
+    normalized = value.strip().lower()
+    if len(normalized) > 255 or not re.fullmatch(SNOWFLAKE_ACCOUNT_PATTERN, normalized) or normalized.endswith(".snowflakecomputing.com"):
+        raise ValueError("Use a Snowflake account identifier, without a URL or domain")
+    return normalized
 
 
 class SnowflakeConnectionCreate(BaseModel):
@@ -19,10 +28,15 @@ class SnowflakeConnectionCreate(BaseModel):
     role_name: str = Field(pattern=SNOWFLAKE_IDENTIFIER_PATTERN)
     warehouse_name: str = Field(pattern=SNOWFLAKE_IDENTIFIER_PATTERN)
 
-    @field_validator("name", "account_identifier", mode="before")
+    @field_validator("name", mode="before")
     @classmethod
     def strip_text(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("account_identifier", mode="before")
+    @classmethod
+    def normalize_account(cls, value: Any) -> Any:
+        return normalize_account_identifier(value) if isinstance(value, str) else value
 
     @field_validator("user_name", "role_name", "warehouse_name", mode="before")
     @classmethod
@@ -58,10 +72,15 @@ class SnowflakeConnectionUpdate(BaseModel):
             raise ValueError("Connection fields cannot be null")
         return value
 
-    @field_validator("name", "account_identifier", mode="before")
+    @field_validator("name", mode="before")
     @classmethod
     def strip_text(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("account_identifier", mode="before")
+    @classmethod
+    def normalize_account(cls, value: Any) -> Any:
+        return normalize_account_identifier(value) if isinstance(value, str) else value
 
     @field_validator("user_name", "role_name", "warehouse_name", mode="before")
     @classmethod

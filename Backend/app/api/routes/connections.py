@@ -8,6 +8,8 @@ from app.auth import OrganizationAccess
 from app.permissions import require_capability
 from app.db import get_db
 from app.models.snowflake_connections import SnowflakeConnection
+from app.models.query_usage import QueryUsage
+from app.models.sync_runs import SyncRun
 from app.schemas.connections import (
     SnowflakeConnectionCreate,
     SnowflakeConnectionRead,
@@ -19,6 +21,7 @@ from app.services.snowflake import (
     create_vault_secret,
     generate_key_pair,
     registration_sql,
+    lock_connection,
     validate_connection,
 )
 
@@ -28,18 +31,25 @@ router = APIRouter(
 )
 
 
-def _find_connection(db: Session, organization_id: UUID, connection_id: UUID):
-    connection = (
-        db.query(SnowflakeConnection)
-        .filter(
-            SnowflakeConnection.id == connection_id,
-            SnowflakeConnection.organization_id == organization_id,
-        )
-        .one_or_none()
+def _find_connection(db: Session, organization_id: UUID, connection_id: UUID, *, lock=False):
+    if lock:
+        lock_connection(db, organization_id, connection_id)
+    query = db.query(SnowflakeConnection).filter(
+        SnowflakeConnection.id == connection_id,
+        SnowflakeConnection.organization_id == organization_id,
     )
+    connection = (query.with_for_update() if lock else query).one_or_none()
     if connection is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
     return connection
+
+
+def _sync_is_active(db: Session, connection_id: UUID) -> bool:
+    return db.query(SyncRun.id).filter(
+        SyncRun.connection_id == connection_id,
+        SyncRun.run_type == "snowflake_query_usage_ingestion",
+        SyncRun.status.in_(["queued", "running"]),
+    ).first() is not None
 
 
 def _read_connection(connection: SnowflakeConnection) -> SnowflakeConnectionRead:
@@ -115,18 +125,35 @@ def update_connection(
     access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> SnowflakeConnectionRead:
-    connection = _find_connection(db, access.organization_id, connection_id)
+    connection = _find_connection(db, access.organization_id, connection_id, lock=True)
     changes = payload.model_dump(exclude_unset=True)
     if changes:
+        scope_changed = any(
+            field != "name" and (
+                value.casefold() != connection.account_identifier.casefold()
+                if field == "account_identifier" else value != getattr(connection, field)
+            )
+            for field, value in changes.items()
+        )
+        if scope_changed and _sync_is_active(db, connection.id):
+            raise HTTPException(status_code=409, detail="Wait for the active Snowflake sync before changing connection scope")
+        if changes.get("account_identifier", connection.account_identifier).casefold() != connection.account_identifier.casefold():
+            usage_exists = db.query(QueryUsage.id).filter(
+                QueryUsage.organization_id == access.organization_id,
+                QueryUsage.connection_id == connection.id,
+            ).first()
+            if usage_exists:
+                raise HTTPException(status_code=409, detail="Create a new connection to use a different Snowflake account")
         for field, value in changes.items():
             setattr(connection, field, value)
-        connection.status = "pending"
-        connection.lifecycle_state = "configured"
-        connection.enabled = False
-        connection.capabilities = {}
-        connection.validation_error = None
-        connection.last_validated_at = None
-        connection.key_expires_at = None
+        if scope_changed:
+            connection.status = "pending"
+            connection.lifecycle_state = "configured"
+            connection.enabled = False
+            connection.capabilities = {}
+            connection.validation_error = None
+            connection.last_validated_at = None
+            connection.key_expires_at = None
     try:
         db.commit()
     except IntegrityError as exc:
@@ -145,7 +172,9 @@ def validate_snowflake_connection(
     access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> SnowflakeConnectionRead:
-    connection = _find_connection(db, access.organization_id, connection_id)
+    connection = _find_connection(db, access.organization_id, connection_id, lock=True)
+    if _sync_is_active(db, connection.id):
+        raise HTTPException(status_code=409, detail="Wait for the active Snowflake sync before validating")
     try:
         result = validate_connection(db, connection)
     except SnowflakeValidationError as exc:
@@ -186,7 +215,9 @@ def disable_connection(
     access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> None:
-    connection = _find_connection(db, access.organization_id, connection_id)
+    connection = _find_connection(db, access.organization_id, connection_id, lock=True)
+    if _sync_is_active(db, connection.id):
+        raise HTTPException(status_code=409, detail="Wait for the active Snowflake sync before disabling the connection")
     connection.enabled = False
     connection.status = "disabled"
     connection.lifecycle_state = "disabled"

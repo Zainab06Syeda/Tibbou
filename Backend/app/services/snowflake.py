@@ -3,8 +3,9 @@ import hashlib
 import json
 import os
 import re
+from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -15,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.snowflake_connections import SnowflakeConnection
+from app.schemas.connections import BLOCKED_ROLES, SNOWFLAKE_IDENTIFIER_PATTERN, normalize_account_identifier
 
 
 class SnowflakeValidationError(RuntimeError):
@@ -101,7 +103,30 @@ def _private_key_bytes(db: Session | None, connection: SnowflakeConnection) -> b
     )
 
 
+def lock_connection(db: Session, organization_id: UUID, connection_id: UUID) -> None:
+    # Operators may read/queue but cannot UPDATE connections under RLS.
+    # Share this transaction lock with setup changes without expanding grants.
+    db.execute(text("select pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+               {"scope": f"tibbou:snowflake:{organization_id}:{connection_id}"})
+
+
+def _validate_identifiers(connection: SnowflakeConnection) -> None:
+    try:
+        normalize_account_identifier(connection.account_identifier)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise SnowflakeValidationError("Invalid Snowflake account identifier") from exc
+    for field in ("user_name", "role_name", "warehouse_name", "key_pair_name"):
+        value = getattr(connection, field, None)
+        if not isinstance(value, str) or not re.fullmatch(SNOWFLAKE_IDENTIFIER_PATTERN, value):
+            raise SnowflakeValidationError("Invalid Snowflake setup identifier")
+    if connection.role_name.upper() in BLOCKED_ROLES:
+        raise SnowflakeValidationError("Use a dedicated least-privilege Snowflake role")
+    if connection.key_pair_name.upper() in {"PUBLIC_KEY_1", "PUBLIC_KEY_2"}:
+        raise SnowflakeValidationError("Use the generated named Snowflake key")
+
+
 def connection_kwargs(db: Session | None, connection: SnowflakeConnection) -> dict[str, Any]:
+    _validate_identifiers(connection)
     if connection.auth_method != "key_pair":
         raise RuntimeError("Only Snowflake key-pair authentication is supported")
     return {
@@ -116,68 +141,110 @@ def connection_kwargs(db: Session | None, connection: SnowflakeConnection) -> di
     }
 
 
-def fetch_usage(
-    connection: SnowflakeConnection, snowflake_kwargs: dict[str, Any]
-) -> tuple[list[dict], dict[str, set[str]], bool]:
+USAGE_PAGE_SIZE = 1000
+
+
+def _access_objects(value: Any) -> set[str]:
+    if isinstance(value, str):
+        value = json.loads(value)
+    return {
+        item["objectName"]
+        for item in (value or [])
+        if isinstance(item, dict) and isinstance(item.get("objectName"), str)
+    }
+
+
+def iter_usage_pages(
+    connection: SnowflakeConnection,
+    snowflake_kwargs: dict[str, Any],
+    window_start: datetime,
+    window_end: datetime,
+):
+    """Yield bounded query pages and Access History tiers for one half-open window."""
     import snowflake.connector
 
-    snowflake_connection = snowflake.connector.connect(**snowflake_kwargs)
-    cursor = snowflake_connection.cursor()
-    try:
+    with (
+        closing(snowflake.connector.connect(**snowflake_kwargs)) as snowflake_connection,
+        closing(snowflake_connection.cursor()) as cursor,
+    ):
         timeout = min(
             max(int(os.getenv("SNOWFLAKE_STATEMENT_TIMEOUT_SECONDS", "30")), 5), 120
         )
         cursor.execute(f"alter session set statement_timeout_in_seconds = {timeout}")
-        cursor.execute(
-            """
+        after: tuple[datetime, str] | None = None
+        access_history_available = bool((connection.capabilities or {}).get("access_history"))
+        while True:
+            try:
+                cursor.execute(
+                    f"""
             select query_id, warehouse_name, start_time, end_time,
                    credits_attributed_compute, credits_used_query_acceleration
             from snowflake.account_usage.query_attribution_history
-            where start_time >= dateadd(hour, -48, current_timestamp())
+            where start_time >= %s and start_time < %s
               and warehouse_name = %s
-            order by start_time
-            limit 10000
+              and (%s is null or start_time > %s
+                   or (start_time = %s and query_id > %s))
+            order by start_time, query_id
+            limit {USAGE_PAGE_SIZE}
             """,
-            (connection.warehouse_name,),
-        )
-        columns = [item[0].lower() for item in cursor.description]
-        usage = [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-        object_names: dict[str, set[str]] = {}
-        access_history_available = True
-        try:
-            query_ids = [str(row["query_id"]) for row in usage if row.get("query_id")]
-            if query_ids:
-                cursor.execute(
-                    """
-                    with relevant_query_ids as (
-                        select value::string as query_id
-                        from table(flatten(input => parse_json(%s)))
-                    )
-                    select history.query_id, accessed.value:objectName::string as object_name
-                    from snowflake.account_usage.access_history as history
-                    join relevant_query_ids as relevant
-                      on relevant.query_id = history.query_id,
-                         lateral flatten(input => history.base_objects_accessed) as accessed
-                    where history.query_start_time >= dateadd(hour, -48, current_timestamp())
-                    limit 10000
-                    """,
-                    (json.dumps(query_ids),),
+                    (window_start, window_end,
+                     (connection.capabilities or {}).get("current_warehouse", connection.warehouse_name),
+                     after[0] if after else None, after[0] if after else None,
+                     after[0] if after else None, after[1] if after else None),
                 )
-                for query_id, object_name in cursor.fetchall():
-                    if query_id and object_name:
-                        object_names.setdefault(str(query_id), set()).add(
-                            str(object_name).upper()
+            except snowflake.connector.errors.ProgrammingError as exc:
+                if getattr(exc, "sqlstate", None) in {"42501", "42S02"}:
+                    raise SnowflakeValidationError(
+                        "Snowflake role needs access to QUERY_ATTRIBUTION_HISTORY"
+                    ) from exc
+                raise
+            columns = [item[0].lower() for item in cursor.description]
+            usage = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            if not usage:
+                break
+
+            objects_by_query: dict[str, dict[str, set[str]]] = {}
+            query_ids = [str(row["query_id"]) for row in usage if row.get("query_id")]
+            if query_ids and access_history_available:
+                try:
+                    cursor.execute(
+                        """
+                        with relevant_query_ids as (
+                            select value::string as query_id
+                            from table(flatten(input => parse_json(%s)))
                         )
-        except snowflake.connector.errors.ProgrammingError:
-            access_history_available = False
-        return usage, object_names, access_history_available
-    finally:
-        cursor.close()
-        snowflake_connection.close()
+                        select history.query_id, to_json(history.objects_modified),
+                               to_json(history.direct_objects_accessed),
+                               to_json(history.base_objects_accessed)
+                        from snowflake.account_usage.access_history as history
+                        join relevant_query_ids as relevant
+                          on relevant.query_id = history.query_id
+                        where history.query_start_time >= %s
+                          and history.query_start_time < %s
+                        """,
+                        (json.dumps(query_ids), window_start, window_end),
+                    )
+                    for query_id, modified, direct, base in cursor.fetchall():
+                        if query_id:
+                            objects_by_query[str(query_id)] = {
+                                "objects_modified": _access_objects(modified),
+                                "direct_objects_accessed": _access_objects(direct),
+                                "base_objects_accessed": _access_objects(base),
+                            }
+                except snowflake.connector.errors.ProgrammingError as exc:
+                    if getattr(exc, "sqlstate", None) not in {"42501", "42S02"}:
+                        raise
+                    access_history_available = False
+
+            yield usage, objects_by_query, access_history_available
+            last = usage[-1]
+            after = (last["start_time"], str(last["query_id"]))
+            if len(usage) < USAGE_PAGE_SIZE:
+                break
 
 
 def registration_sql(connection: SnowflakeConnection) -> str:
+    _validate_identifiers(connection)
     def identifier(value: str) -> str:
         return '"' + value.replace('"', '""') + '"'
 
@@ -194,9 +261,16 @@ def _normalized_fingerprint(value: Any) -> str:
     return str(value or "").removeprefix("SHA256:").strip()
 
 
+def _account_matches(configured: str, locator: str, organization: str, account_name: str) -> bool:
+    expected = configured.casefold().replace("_", "-")
+    named = f"{organization}-{account_name}".casefold().replace("_", "-")
+    return expected == named or configured.split(".", 1)[0].casefold() == locator.casefold()
+
+
 def validate_connection(db: Session, connection: SnowflakeConnection) -> ValidationResult:
     import snowflake.connector
 
+    _validate_identifiers(connection)
     try:
         snowflake_connection = snowflake.connector.connect(**connection_kwargs(db, connection))
         cursor = snowflake_connection.cursor()
@@ -205,9 +279,15 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
 
     try:
         cursor.execute(
-            "select current_account(), current_user(), current_role(), current_warehouse()"
+            "select current_account(), current_organization_name(), current_account_name(), "
+            "current_user(), current_role(), current_warehouse()"
         )
-        current_account, current_user, current_role, current_warehouse = cursor.fetchone()
+        current_account, current_organization, current_account_name, current_user, current_role, current_warehouse = cursor.fetchone()
+        if not _account_matches(
+            connection.account_identifier, str(current_account),
+            str(current_organization), str(current_account_name),
+        ):
+            raise SnowflakeValidationError("Snowflake account does not match the connection")
         expected = {
             "user": connection.user_name,
             "role": connection.role_name,
@@ -229,7 +309,8 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
             (
                 key
                 for key in key_pairs
-                if _normalized_fingerprint(key.get("fingerprint"))
+                if str(key.get("name") or "") == connection.key_pair_name
+                and _normalized_fingerprint(key.get("fingerprint"))
                 == _normalized_fingerprint(connection.public_key_fingerprint)
             ),
             None,
@@ -262,10 +343,14 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
                 "select query_id from snowflake.account_usage.access_history "
                 "where query_start_time >= dateadd(day, -1, current_timestamp()) limit 1"
             )
-        except snowflake.connector.errors.ProgrammingError:
+        except snowflake.connector.errors.ProgrammingError as exc:
+            if getattr(exc, "sqlstate", None) not in {"42501", "42S02"}:
+                raise
             access_history = False
 
         expires_at = matching_key.get("expires_at")
+        if isinstance(expires_at, datetime) and expires_at.replace(tzinfo=expires_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
+            raise SnowflakeValidationError("The Snowflake key has expired")
         return ValidationResult(
             capabilities={
                 "authenticated": True,

@@ -5,11 +5,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from psycopg2.errors import UniqueViolation
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import OrganizationAccess, require_operator, require_viewer
+from app.auth import CurrentUser, OrganizationAccess, set_request_user_context
+from app.permissions import require_capability
 from app.db import get_db
 from app.models.datasets import Dataset
 from app.models.query_usage import QueryDatasetAllocation, QueryUsage
@@ -21,11 +22,12 @@ from app.schemas.ingestion import (
     LatestDbtManifestIngestionSummaryResponse,
     LatestSnowflakeDatasetCreditSummariesResponse,
     QueuedSyncRunResponse,
-    SnowflakeDatasetCreditSummaryItem,
     SnowflakeSyncRequest,
+    SnowflakeDatasetCreditSummaryItem,
     SyncRunRead,
 )
-from app.services.ingestion import utcnow
+from app.services.ingestion import utcnow, usage_window
+from app.services.snowflake import lock_connection
 
 router = APIRouter(
     prefix="/api/v1/organizations/{organization_id}/ingestion", tags=["ingestion"]
@@ -61,13 +63,16 @@ def _existing_run(db: Session, organization_id: UUID, key: str) -> SyncRun | Non
 
 
 def _existing_run_after_idempotency_conflict(
-    db: Session, organization_id: UUID, key: str, exc: IntegrityError
+    db: Session, organization_id: UUID, key: str, exc: IntegrityError, user: CurrentUser
 ) -> SyncRun:
     db.rollback()
     constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
     if not isinstance(exc.orig, UniqueViolation) or constraint_name != "uq_sync_runs_org_idempotency":
         raise exc
 
+    set_request_user_context(db, user.id, user.email)
+    db.execute(text("select set_config('app.current_organization_id', :organization_id, true)"),
+               {"organization_id": str(organization_id)})
     existing = _existing_run(db, organization_id, key)
     if existing is None:
         raise exc
@@ -82,7 +87,7 @@ def _existing_run_after_idempotency_conflict(
 def enqueue_dbt_manifest(
     payload: DbtManifestIngestionRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    access: OrganizationAccess = Depends(require_operator),
+    access: OrganizationAccess = Depends(require_capability("upload_dbt_manifest")),
     db: Session = Depends(get_db),
 ) -> QueuedSyncRunResponse:
     encoded = json.dumps(payload.model_dump(mode="json"), separators=(",", ":"), sort_keys=True).encode()
@@ -99,6 +104,8 @@ def enqueue_dbt_manifest(
     key = _validated_idempotency_key(idempotency_key, f"dbt:{artifact_hash}")
     existing = _existing_run(db, access.organization_id, key)
     if existing is not None:
+        if existing.run_type != "dbt_manifest_ingestion":
+            raise HTTPException(status_code=409, detail="Idempotency key is already in use")
         raw = db.query(RawIngestion).filter(RawIngestion.sync_run_id == existing.id).one_or_none()
         return QueuedSyncRunResponse(
             sync_run_id=existing.id,
@@ -131,8 +138,10 @@ def enqueue_dbt_manifest(
         db.commit()
     except IntegrityError as exc:
         existing = _existing_run_after_idempotency_conflict(
-            db, access.organization_id, key, exc
+            db, access.organization_id, key, exc, access.user
         )
+        if existing.run_type != "dbt_manifest_ingestion":
+            raise HTTPException(status_code=409, detail="Idempotency key is already in use") from exc
         raw = (
             db.query(RawIngestion)
             .filter(RawIngestion.sync_run_id == existing.id)
@@ -154,7 +163,7 @@ def enqueue_dbt_manifest(
 def enqueue_snowflake_sync(
     payload: SnowflakeSyncRequest,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    access: OrganizationAccess = Depends(require_operator),
+    access: OrganizationAccess = Depends(require_capability("trigger_sync")),
     db: Session = Depends(get_db),
 ) -> QueuedSyncRunResponse:
     connection = (
@@ -162,18 +171,41 @@ def enqueue_snowflake_sync(
         .filter(
             SnowflakeConnection.id == payload.connection_id,
             SnowflakeConnection.organization_id == access.organization_id,
-            SnowflakeConnection.status != "disabled",
         )
         .one_or_none()
     )
     if connection is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snowflake connection not found")
-
-    fallback = f"snowflake:{connection.id}:{utcnow().strftime('%Y-%m-%dT%H')}"
+    fallback = f"snowflake:{connection.id}:{utcnow().isoformat()}"
     key = _validated_idempotency_key(idempotency_key, fallback)
     existing = _existing_run(db, access.organization_id, key)
     if existing is not None:
+        if existing.connection_id != connection.id or existing.run_type != "snowflake_query_usage_ingestion":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Idempotency key is already in use")
         return QueuedSyncRunResponse(sync_run_id=existing.id, status=existing.status)
+
+    # Share a transaction lock with scope edits, then reread after a waiter commits.
+    lock_connection(db, access.organization_id, connection.id)
+    db.refresh(connection)
+    existing = _existing_run(db, access.organization_id, key)
+    if existing is not None:
+        if existing.connection_id != connection.id or existing.run_type != "snowflake_query_usage_ingestion":
+            raise HTTPException(status_code=409, detail="Idempotency key is already in use")
+        return QueuedSyncRunResponse(sync_run_id=existing.id, status=existing.status)
+    if not connection.enabled or connection.status != "valid":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Validate and enable the Snowflake connection first")
+    if not (connection.capabilities or {}).get("query_attribution_history"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Snowflake query attribution access is required")
+    active = db.query(SyncRun).filter(
+        SyncRun.organization_id == access.organization_id,
+        SyncRun.connection_id == connection.id,
+        SyncRun.run_type == "snowflake_query_usage_ingestion",
+        SyncRun.status.in_(["queued", "running"]),
+    ).first()
+    if active is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Snowflake synchronization is already queued or running")
+    period_end = utcnow()
+    period_start, period_end = usage_window(connection.watermarks or {}, period_end)
 
     run = SyncRun(
         organization_id=access.organization_id,
@@ -182,22 +214,25 @@ def enqueue_snowflake_sync(
         run_type="snowflake_query_usage_ingestion",
         status="queued",
         idempotency_key=key,
-        details={"connection_id": str(connection.id)},
+        details={"connection_id": str(connection.id), "period_start": period_start.isoformat(),
+                 "period_end": period_end.isoformat(), "source_latency_hours": 8},
     )
     try:
         db.add(run)
         db.commit()
     except IntegrityError as exc:
         run = _existing_run_after_idempotency_conflict(
-            db, access.organization_id, key, exc
+            db, access.organization_id, key, exc, access.user
         )
+        if run.connection_id != connection.id or run.run_type != "snowflake_query_usage_ingestion":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Idempotency key is already in use") from exc
     return QueuedSyncRunResponse(sync_run_id=run.id, status=run.status)
 
 
 @router.get("/sync-runs/{sync_run_id}", response_model=SyncRunRead)
 def get_sync_run(
     sync_run_id: UUID,
-    access: OrganizationAccess = Depends(require_viewer),
+    access: OrganizationAccess = Depends(require_capability("view_data")),
     db: Session = Depends(get_db),
 ) -> SyncRunRead:
     run = (
@@ -214,7 +249,7 @@ def get_sync_run(
     "/dbt/manifest/latest", response_model=LatestDbtManifestIngestionSummaryResponse
 )
 def latest_dbt_manifest(
-    access: OrganizationAccess = Depends(require_viewer), db: Session = Depends(get_db)
+    access: OrganizationAccess = Depends(require_capability("view_data")), db: Session = Depends(get_db)
 ) -> LatestDbtManifestIngestionSummaryResponse:
     run = (
         db.query(SyncRun)
@@ -251,7 +286,7 @@ def latest_dbt_manifest(
     response_model=LatestSnowflakeDatasetCreditSummariesResponse,
 )
 def latest_snowflake_summaries(
-    access: OrganizationAccess = Depends(require_viewer), db: Session = Depends(get_db)
+    access: OrganizationAccess = Depends(require_capability("view_data")), db: Session = Depends(get_db)
 ) -> LatestSnowflakeDatasetCreditSummariesResponse:
     run = (
         db.query(SyncRun)
@@ -265,6 +300,23 @@ def latest_snowflake_summaries(
     )
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snowflake summaries not found")
+
+    if isinstance((run.details or {}).get("published_summary"), dict):
+        latest_attempt = db.query(SyncRun.status).filter(
+            SyncRun.organization_id == access.organization_id,
+            SyncRun.connection_id == run.connection_id,
+            SyncRun.run_type == "snowflake_query_usage_ingestion",
+        ).order_by(SyncRun.queued_at.desc(), SyncRun.id.desc()).first()
+        return LatestSnowflakeDatasetCreditSummariesResponse.model_validate({
+            **run.details["published_summary"],
+            "sync_run_id": run.id,
+            "organization_id": access.organization_id,
+            "connection_id": run.connection_id,
+            "report_state": "frozen",
+            "status": run.status,
+            "last_success_at": run.finished_at,
+            "latest_attempt_status": latest_attempt[0] if latest_attempt else run.status,
+        })
 
     rows = (
         db.query(
@@ -281,6 +333,8 @@ def latest_snowflake_summaries(
         .filter(
             Dataset.organization_id == access.organization_id,
             QueryUsage.sync_run_id == run.id,
+            QueryUsage.organization_id == access.organization_id,
+            QueryDatasetAllocation.organization_id == access.organization_id,
         )
         .group_by(Dataset.id, Dataset.name)
         .order_by(Dataset.name, Dataset.id)
@@ -290,8 +344,8 @@ def latest_snowflake_summaries(
         SnowflakeDatasetCreditSummaryItem(
             dataset_id=row[0],
             dataset_name=row[1],
-            total_credits_attributed_compute=float(row[2]) if row[2] is not None else None,
-            total_credits_used_query_acceleration=float(row[3]) if row[3] is not None else None,
+            total_credits_attributed_compute=row[2] if row[2] is not None else None,
+            total_credits_used_query_acceleration=row[3] if row[3] is not None else None,
             attributed_query_count=row[4],
             period_start=row[5],
             period_end=row[6],
@@ -302,6 +356,11 @@ def latest_snowflake_summaries(
     period_end = max((item.period_end for item in summaries if item.period_end), default=None)
     return LatestSnowflakeDatasetCreditSummariesResponse(
         sync_run_id=run.id,
+        organization_id=access.organization_id,
+        connection_id=run.connection_id,
+        last_success_at=run.finished_at,
+        latest_attempt_status=run.status,
+        report_state="legacy",
         status=run.status,
         period_start=period_start,
         period_end=period_end,

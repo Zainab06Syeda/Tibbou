@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from app.api.routes.connections import (
     _find_connection,
     create_connection,
+    update_connection,
     validate_snowflake_connection,
 )
 from app.schemas.connections import SnowflakeConnectionCreate, SnowflakeConnectionUpdate
@@ -25,6 +26,7 @@ from app.services.snowflake import (
     GeneratedKeyPair,
     SnowflakeValidationError,
     ValidationResult,
+    _account_matches,
     connection_kwargs,
     generate_key_pair,
     validate_connection,
@@ -32,10 +34,14 @@ from app.services.snowflake import (
 
 
 class _FakeCursor:
-    def __init__(self, fingerprint, access_history=True, current_user="TIBBOU_USER"):
+    def __init__(self, fingerprint, access_history=True, current_user="TIBBOU_USER",
+                 current_account="TEST_ACCOUNT", key_name="TIBBOU_KEY", access_sqlstate="42S02"):
         self.fingerprint = fingerprint
         self.access_history = access_history
         self.current_user = current_user
+        self.current_account = current_account
+        self.key_name = key_name
+        self.access_sqlstate = access_sqlstate
         self.description = []
         self.rows = []
         self.closed = False
@@ -43,9 +49,11 @@ class _FakeCursor:
     def execute(self, statement):
         lowered = statement.lower()
         if "current_account" in lowered:
-            self.rows = [("TEST_ACCOUNT", self.current_user, "TIBBOU_ROLE", "TIBBOU_WH")]
+            self.rows = [(self.current_account, "TEST", "ACCOUNT", self.current_user,
+                          "TIBBOU_ROLE", "TIBBOU_WH")]
         elif lowered.startswith("show user key pairs"):
             self.description = [
+                ("NAME",),
                 ("FINGERPRINT",),
                 ("ROLE_SCOPE",),
                 ("STATUS",),
@@ -53,6 +61,7 @@ class _FakeCursor:
             ]
             self.rows = [
                 (
+                    self.key_name,
                     self.fingerprint,
                     "TIBBOU_ROLE",
                     "ACTIVE",
@@ -60,7 +69,7 @@ class _FakeCursor:
                 )
             ]
         elif "access_history" in lowered and not self.access_history:
-            raise ProgrammingError(msg="not authorized")
+            raise ProgrammingError(msg="not authorized", sqlstate=self.access_sqlstate)
         return self
 
     def fetchone(self):
@@ -80,6 +89,7 @@ def _connection(fingerprint="SHA256:test"):
         user_name="TIBBOU_USER",
         role_name="TIBBOU_ROLE",
         warehouse_name="TIBBOU_WH",
+        key_pair_name="TIBBOU_KEY",
         public_key_fingerprint=fingerprint,
     )
 
@@ -188,6 +198,37 @@ class SnowflakeConnectionTests(unittest.TestCase):
         ):
             validate_connection(SimpleNamespace(), _connection())
 
+    def test_account_formats_and_validation_mismatch(self):
+        self.assertTrue(_account_matches("test-account", "TEST_ACCOUNT", "TEST", "ACCOUNT"))
+        self.assertTrue(_account_matches("test_account.us-east-2.aws", "TEST_ACCOUNT", "OTHER", "NAME"))
+        self.assertFalse(_account_matches("other-account", "TEST_ACCOUNT", "TEST", "ACCOUNT"))
+        cursor = _FakeCursor("SHA256:test", current_account="OTHER_LOCATOR")
+        snowflake_connection = MagicMock()
+        snowflake_connection.cursor.return_value = cursor
+        connection = _connection()
+        connection.account_identifier = "old-account"
+        with (
+            patch("app.services.snowflake.connection_kwargs", return_value={}),
+            patch("snowflake.connector.connect", return_value=snowflake_connection),
+            self.assertRaisesRegex(SnowflakeValidationError, "account does not match"),
+        ):
+            validate_connection(SimpleNamespace(), connection)
+
+    def test_validation_rejects_wrong_key_name_and_unrelated_access_error(self):
+        for cursor, expected in (
+            (_FakeCursor("SHA256:test", key_name="OTHER_KEY"), "public key is not registered"),
+            (_FakeCursor("SHA256:test", access_history=False, access_sqlstate="42000"),
+             "capability validation failed"),
+        ):
+            snowflake_connection = MagicMock()
+            snowflake_connection.cursor.return_value = cursor
+            with (
+                patch("app.services.snowflake.connection_kwargs", return_value={}),
+                patch("snowflake.connector.connect", return_value=snowflake_connection),
+                self.assertRaisesRegex(SnowflakeValidationError, expected),
+            ):
+                validate_connection(SimpleNamespace(), _connection())
+
     def test_create_generates_and_stores_server_side_credential(self):
         payload = SnowflakeConnectionCreate(
             name="Primary",
@@ -223,7 +264,7 @@ class SnowflakeConnectionTests(unittest.TestCase):
         store_secret.assert_called_once_with(db, created.id, "private-pem")
 
     def test_validation_marks_connection_validated_but_not_active(self):
-        connection = SimpleNamespace()
+        connection = SimpleNamespace(id="connection-id")
         result = ValidationResult(
             capabilities={"mode": "partial"},
             key_expires_at=datetime(2026, 12, 1, tzinfo=timezone.utc),
@@ -234,6 +275,7 @@ class SnowflakeConnectionTests(unittest.TestCase):
                 "app.api.routes.connections._find_connection",
                 return_value=connection,
             ),
+            patch("app.api.routes.connections._sync_is_active", return_value=False),
             patch("app.api.routes.connections.validate_connection", return_value=result),
             patch(
                 "app.api.routes.connections._read_connection",
@@ -250,6 +292,41 @@ class SnowflakeConnectionTests(unittest.TestCase):
         self.assertEqual(connection.lifecycle_state, "validated")
         self.assertNotEqual(connection.lifecycle_state, "active")
         self.assertTrue(connection.enabled)
+
+    def test_account_change_with_usage_and_scope_change_during_sync_are_rejected(self):
+        connection = SimpleNamespace(
+            id="connection-id", account_identifier="old-account", name="Primary",
+            role_name="OLD_ROLE", enabled=True, status="valid",
+        )
+        access = SimpleNamespace(organization_id="organization-id")
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = ("usage-id",)
+        with (
+            patch("app.api.routes.connections._find_connection", return_value=connection),
+            patch("app.api.routes.connections._sync_is_active", return_value=False),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            update_connection("connection-id", SnowflakeConnectionUpdate(account_identifier="new-account"), access, db)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(connection.account_identifier, "old-account")
+        db.commit.assert_not_called()
+
+        with (
+            patch("app.api.routes.connections._find_connection", return_value=connection),
+            patch("app.api.routes.connections._sync_is_active", return_value=True),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            update_connection("connection-id", SnowflakeConnectionUpdate(role_name="NEW_ROLE"), access, db)
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(connection.role_name, "OLD_ROLE")
+
+        with (
+            patch("app.api.routes.connections._find_connection", return_value=connection),
+            patch("app.api.routes.connections._sync_is_active", return_value=True),
+            self.assertRaises(HTTPException) as raised,
+        ):
+            validate_snowflake_connection("connection-id", access, db)
+        self.assertEqual(raised.exception.status_code, 409)
 
     def test_cross_organization_connection_is_hidden(self):
         db = MagicMock()
