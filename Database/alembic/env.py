@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -5,16 +6,28 @@ from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
-from app import models  # noqa: F401
-from app.db import Base, DATABASE_URL
+# An explicit URL (for example from an isolated migration test) takes precedence
+# over the local migration credential loaded from Database/.env.migrations.
+explicit_database_url = os.environ.get("DATABASE_URL")
+explicit_migration_url = os.environ.get("MIGRATION_DATABASE_URL")
+load_dotenv(Path(__file__).resolve().parents[2] / "Backend" / ".env")
+load_dotenv(Path(__file__).resolve().parents[1] / ".env.migrations")
+
+from app import models  # noqa: E402, F401
+from app.db import Base, DATABASE_URL  # noqa: E402
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / "Backend" / ".env")
-config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
+migration_url = (
+    explicit_migration_url
+    or explicit_database_url
+    or os.environ.get("MIGRATION_DATABASE_URL")
+    or DATABASE_URL
+)
+config.set_main_option("sqlalchemy.url", migration_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
