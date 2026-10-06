@@ -101,6 +101,8 @@ def create_connection(
         connection.secret_reference = create_vault_secret(
             db, connection.id, key_pair.private_key_pem
         )
+        db.flush()
+        response = _read_connection(connection)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -114,8 +116,7 @@ def create_connection(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Snowflake credential storage is unavailable",
         ) from exc
-    db.refresh(connection)
-    return _read_connection(connection)
+    return response
 
 
 @router.patch("/{connection_id}", response_model=SnowflakeConnectionRead)
@@ -135,15 +136,24 @@ def update_connection(
             )
             for field, value in changes.items()
         )
-        if scope_changed and _sync_is_active(db, connection.id):
-            raise HTTPException(status_code=409, detail="Wait for the active Snowflake sync before changing connection scope")
-        if changes.get("account_identifier", connection.account_identifier).casefold() != connection.account_identifier.casefold():
+        account_changed = changes.get("account_identifier", connection.account_identifier).casefold() != connection.account_identifier.casefold()
+        warehouse_changed = (
+            "warehouse_name" in changes and changes["warehouse_name"] != connection.warehouse_name
+        )
+        if account_changed or warehouse_changed:
             usage_exists = db.query(QueryUsage.id).filter(
                 QueryUsage.organization_id == access.organization_id,
                 QueryUsage.connection_id == connection.id,
             ).first()
-            if usage_exists:
-                raise HTTPException(status_code=409, detail="Create a new connection to use a different Snowflake account")
+            has_watermark = warehouse_changed and (connection.watermarks or {}).get("query_attribution_history")
+            if usage_exists or has_watermark:
+                source = "warehouse" if warehouse_changed else "account"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Create a new connection to use a different Snowflake {source}",
+                )
+        if scope_changed and _sync_is_active(db, connection.id):
+            raise HTTPException(status_code=409, detail="Wait for the active Snowflake sync before changing connection scope")
         for field, value in changes.items():
             setattr(connection, field, value)
         if scope_changed:
@@ -155,6 +165,9 @@ def update_connection(
             connection.last_validated_at = None
             connection.key_expires_at = None
     try:
+        # Flush defaults and serialize while transaction-local authorization is valid.
+        db.flush()
+        response = _read_connection(connection)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -162,8 +175,7 @@ def update_connection(
             status_code=status.HTTP_409_CONFLICT,
             detail="Snowflake connection conflicts with an existing connection",
         ) from exc
-    db.refresh(connection)
-    return _read_connection(connection)
+    return response
 
 
 @router.post("/{connection_id}/validate", response_model=SnowflakeConnectionRead)
@@ -198,6 +210,9 @@ def validate_snowflake_connection(
     connection.last_validated_at = utcnow()
     connection.key_expires_at = result.key_expires_at
     try:
+        # Flush defaults and serialize while transaction-local authorization is valid.
+        db.flush()
+        response = _read_connection(connection)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -205,8 +220,7 @@ def validate_snowflake_connection(
             status_code=status.HTTP_409_CONFLICT,
             detail="Another Snowflake connection is already enabled",
         ) from exc
-    db.refresh(connection)
-    return _read_connection(connection)
+    return response
 
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)

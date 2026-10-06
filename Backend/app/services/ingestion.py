@@ -228,6 +228,68 @@ def _assert_sync_connection(current: SnowflakeConnection | None, original: Snowf
         raise SnowflakeValidationError("Snowflake connection changed during synchronization")
 
 
+def build_legacy_credit_summary(
+    db: Session, organization_id, run_id
+) -> dict[str, Any]:
+    """Capture only the legacy response determinable from its existing rows."""
+    rows = (
+        db.query(
+            Dataset.id, Dataset.name,
+            func.sum(QueryUsage.compute_credits * QueryDatasetAllocation.allocation_weight),
+            func.sum(QueryUsage.acceleration_credits * QueryDatasetAllocation.allocation_weight),
+            func.count(QueryUsage.id.distinct()),
+            func.min(QueryUsage.started_at), func.max(QueryUsage.ended_at),
+        )
+        .join(QueryDatasetAllocation, QueryDatasetAllocation.dataset_id == Dataset.id)
+        .join(QueryUsage, QueryUsage.id == QueryDatasetAllocation.query_usage_id)
+        .filter(
+            Dataset.organization_id == organization_id,
+            QueryUsage.sync_run_id == run_id,
+            QueryUsage.organization_id == organization_id,
+            QueryDatasetAllocation.organization_id == organization_id,
+        )
+        .group_by(Dataset.id, Dataset.name)
+        .order_by(Dataset.name, Dataset.id)
+        .all()
+    )
+    period_start = min((row[5] for row in rows if row[5]), default=None)
+    period_end = max((row[6] for row in rows if row[6]), default=None)
+    return {
+        "report_state": "legacy",
+        "period_start": period_start.isoformat() if period_start else None,
+        "period_end": period_end.isoformat() if period_end else None,
+        "dataset_credit_summary_count": len(rows),
+        "dataset_credit_summaries": [
+            {
+                "dataset_id": str(row[0]), "dataset_name": row[1],
+                "total_credits_attributed_compute": str(row[2]) if row[2] is not None else None,
+                "total_credits_used_query_acceleration": str(row[3]) if row[3] is not None else None,
+                "attributed_query_count": row[4],
+                "period_start": row[5].isoformat() if row[5] else None,
+                "period_end": row[6].isoformat() if row[6] else None,
+            }
+            for row in rows
+        ],
+    }
+
+
+def _preserve_legacy_report(db: Session, organization_id, run_id) -> None:
+    previous = db.query(SyncRun).filter(
+        SyncRun.id == run_id,
+        SyncRun.organization_id == organization_id,
+        SyncRun.run_type == "snowflake_query_usage_ingestion",
+        SyncRun.status.in_(["success", "partial"]),
+    ).one_or_none()
+    if previous is not None and not isinstance((previous.details or {}).get("published_summary"), dict):
+        # Capture before the first overlapping upsert, in the same page transaction.
+        # No reconstruction of missing history or bulk backfill of other runs.
+        previous.details = {
+            **(previous.details or {}),
+            "published_summary": build_legacy_credit_summary(db, organization_id, run_id),
+        }
+        db.flush()
+
+
 def process_snowflake_sync(
     db: Session, sync_run: SyncRun, assert_ownership: Callable[[], None]
 ) -> dict[str, int | bool]:
@@ -308,6 +370,8 @@ def process_snowflake_sync(
                         )
                         db.add(query_usage)
                         queries_created += 1
+                    if query_usage.sync_run_id != sync_run_id:
+                        _preserve_legacy_report(db, organization_id, query_usage.sync_run_id)
                     query_usage.sync_run_id = sync_run_id
                     query_usage.ended_at = row.get("end_time")
                     query_usage.compute_credits = Decimal(str(row["credits_attributed_compute"])) if row.get("credits_attributed_compute") is not None else None

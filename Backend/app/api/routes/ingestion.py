@@ -5,15 +5,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from psycopg2.errors import UniqueViolation
-from sqlalchemy import func, text
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser, OrganizationAccess, set_request_user_context
 from app.permissions import require_capability
 from app.db import get_db
-from app.models.datasets import Dataset
-from app.models.query_usage import QueryDatasetAllocation, QueryUsage
 from app.models.raw_ingestions import RawIngestion
 from app.models.snowflake_connections import SnowflakeConnection
 from app.models.sync_runs import SyncRun
@@ -23,10 +21,9 @@ from app.schemas.ingestion import (
     LatestSnowflakeDatasetCreditSummariesResponse,
     QueuedSyncRunResponse,
     SnowflakeSyncRequest,
-    SnowflakeDatasetCreditSummaryItem,
     SyncRunRead,
 )
-from app.services.ingestion import utcnow, usage_window
+from app.services.ingestion import build_legacy_credit_summary, utcnow, usage_window
 from app.services.snowflake import lock_connection
 
 router = APIRouter(
@@ -135,6 +132,10 @@ def enqueue_dbt_manifest(
             artifact_hash=artifact_hash,
         )
         db.add(raw)
+        db.flush()
+        response = QueuedSyncRunResponse(
+            sync_run_id=sync_run.id, raw_ingestion_id=raw.id, status="queued"
+        )
         db.commit()
     except IntegrityError as exc:
         existing = _existing_run_after_idempotency_conflict(
@@ -152,7 +153,7 @@ def enqueue_dbt_manifest(
             raw_ingestion_id=raw.id if raw else None,
             status=existing.status,
         )
-    return QueuedSyncRunResponse(sync_run_id=sync_run.id, raw_ingestion_id=raw.id, status="queued")
+    return response
 
 
 @router.post(
@@ -219,6 +220,8 @@ def enqueue_snowflake_sync(
     )
     try:
         db.add(run)
+        db.flush()
+        response = QueuedSyncRunResponse(sync_run_id=run.id, status=run.status)
         db.commit()
     except IntegrityError as exc:
         run = _existing_run_after_idempotency_conflict(
@@ -226,7 +229,8 @@ def enqueue_snowflake_sync(
         )
         if run.connection_id != connection.id or run.run_type != "snowflake_query_usage_ingestion":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Idempotency key is already in use") from exc
-    return QueuedSyncRunResponse(sync_run_id=run.id, status=run.status)
+        return QueuedSyncRunResponse(sync_run_id=run.id, status=run.status)
+    return response
 
 
 @router.get("/sync-runs/{sync_run_id}", response_model=SyncRunRead)
@@ -301,6 +305,13 @@ def latest_snowflake_summaries(
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snowflake summaries not found")
 
+    legacy_summary = None
+    if not isinstance((run.details or {}).get("published_summary"), dict):
+        legacy_summary = build_legacy_credit_summary(db, access.organization_id, run.id)
+        # A page may capture the report between the run lookup and aggregate.
+        # Recheck afterward so READ COMMITTED readers never return moved rows.
+        db.refresh(run, attribute_names=["details"])
+
     if isinstance((run.details or {}).get("published_summary"), dict):
         latest_attempt = db.query(SyncRun.status).filter(
             SyncRun.organization_id == access.organization_id,
@@ -312,58 +323,18 @@ def latest_snowflake_summaries(
             "sync_run_id": run.id,
             "organization_id": access.organization_id,
             "connection_id": run.connection_id,
-            "report_state": "frozen",
+            "report_state": run.details["published_summary"].get("report_state", "frozen"),
             "status": run.status,
             "last_success_at": run.finished_at,
             "latest_attempt_status": latest_attempt[0] if latest_attempt else run.status,
         })
 
-    rows = (
-        db.query(
-            Dataset.id,
-            Dataset.name,
-            func.sum(QueryUsage.compute_credits * QueryDatasetAllocation.allocation_weight),
-            func.sum(QueryUsage.acceleration_credits * QueryDatasetAllocation.allocation_weight),
-            func.count(QueryUsage.id.distinct()),
-            func.min(QueryUsage.started_at),
-            func.max(QueryUsage.ended_at),
-        )
-        .join(QueryDatasetAllocation, QueryDatasetAllocation.dataset_id == Dataset.id)
-        .join(QueryUsage, QueryUsage.id == QueryDatasetAllocation.query_usage_id)
-        .filter(
-            Dataset.organization_id == access.organization_id,
-            QueryUsage.sync_run_id == run.id,
-            QueryUsage.organization_id == access.organization_id,
-            QueryDatasetAllocation.organization_id == access.organization_id,
-        )
-        .group_by(Dataset.id, Dataset.name)
-        .order_by(Dataset.name, Dataset.id)
-        .all()
-    )
-    summaries = [
-        SnowflakeDatasetCreditSummaryItem(
-            dataset_id=row[0],
-            dataset_name=row[1],
-            total_credits_attributed_compute=row[2] if row[2] is not None else None,
-            total_credits_used_query_acceleration=row[3] if row[3] is not None else None,
-            attributed_query_count=row[4],
-            period_start=row[5],
-            period_end=row[6],
-        )
-        for row in rows
-    ]
-    period_start = min((item.period_start for item in summaries if item.period_start), default=None)
-    period_end = max((item.period_end for item in summaries if item.period_end), default=None)
-    return LatestSnowflakeDatasetCreditSummariesResponse(
-        sync_run_id=run.id,
-        organization_id=access.organization_id,
-        connection_id=run.connection_id,
-        last_success_at=run.finished_at,
-        latest_attempt_status=run.status,
-        report_state="legacy",
-        status=run.status,
-        period_start=period_start,
-        period_end=period_end,
-        dataset_credit_summaries=summaries,
-        dataset_credit_summary_count=len(summaries),
-    )
+    return LatestSnowflakeDatasetCreditSummariesResponse.model_validate({
+        **legacy_summary,
+        "sync_run_id": run.id,
+        "organization_id": access.organization_id,
+        "connection_id": run.connection_id,
+        "last_success_at": run.finished_at,
+        "latest_attempt_status": run.status,
+        "status": run.status,
+    })

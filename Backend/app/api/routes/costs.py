@@ -50,12 +50,13 @@ def create_cost_snapshot(
     )
     db.add(snapshot)
     try:
+        db.flush()
+        response = CostSnapshotRead.model_validate(snapshot)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cost snapshot conflicts") from exc
-    db.refresh(snapshot)
-    return snapshot
+    return response
 
 
 @router.get("/{cost_id}", response_model=CostSnapshotRead)
