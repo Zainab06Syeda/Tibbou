@@ -16,12 +16,62 @@ class OrganizationRead(BaseModel):
     created_at: datetime
 
 
+class OrganizationSummaryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    slug: str
+
+
+class OrganizationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    allow_domain_join: Literal[False] = False
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Organization name is required")
+        return normalized
+
+
+class DomainMatchRead(BaseModel):
+    organization: OrganizationSummaryRead | None
+    allow_domain_join: bool
+    already_requested: bool
+
+
+class OrganizationJoinRequestRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    organization_id: UUID
+    email: str
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class OrganizationJoinRequestSummaryRead(BaseModel):
+    id: UUID
+    user_id: UUID
+    email: str
+    status: str
+    created_at: datetime
+
+
 class OrganizationMembershipRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: UUID
     role: str
     created_at: datetime
+
+
+class MembershipRoleUpdate(BaseModel):
+    role: Literal["admin", "operator", "viewer"]
 
 
 class OrganizationInvitationCreate(BaseModel):
@@ -47,6 +97,13 @@ class OrganizationInvitationRead(BaseModel):
     invited_by: UUID
     created_at: datetime
     expires_at: datetime
+
+
+class OrganizationInvitationCreateResult(OrganizationInvitationRead):
+    # Whether Resend actually sent the email, vs. it only being logged
+    # server-side (no RESEND_API_KEY/RESEND_FROM_EMAIL configured, or the
+    # send failed) -- lets the admin UI show a copyable link either way.
+    email_sent: bool
 
 
 class OrganizationInvitationSummaryRead(BaseModel):

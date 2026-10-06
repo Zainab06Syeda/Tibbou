@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      fs: { allow: [path.resolve(__dirname, '.'), path.resolve(__dirname, '../../Database')] },
       proxy: {
         '/api': {
           target: backendTarget,

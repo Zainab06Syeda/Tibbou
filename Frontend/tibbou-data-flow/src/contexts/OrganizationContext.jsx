@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   acceptInvitation as acceptInvitationRequest,
@@ -17,9 +17,11 @@ export function OrganizationProvider({ children }) {
   const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(Boolean(session));
   const [error, setError] = useState("");
+  const refreshVersion = useRef(0);
 
   async function refresh(preferredId = null) {
     if (!session) return;
+    const version = ++refreshVersion.current;
     setLoading(true);
     try {
       const rows = await getOrganizations();
@@ -29,31 +31,41 @@ export function OrganizationProvider({ children }) {
         rows.find((row) => row.id === storedId) ||
         rows[0] ||
         null;
+      const pending = selected ? [] : await getInvitations();
+      if (version !== refreshVersion.current) return;
       setOrganizations(rows);
       setOrganization(selected);
       if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
-      setInvitations(selected ? [] : await getInvitations());
+      else localStorage.removeItem(STORAGE_KEY);
+      setInvitations(pending);
       setError("");
     } catch (requestError) {
-      setError(requestError.message);
+      if (version === refreshVersion.current) setError(requestError.message);
+      throw requestError;
     } finally {
-      setLoading(false);
+      if (version === refreshVersion.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (session) refresh();
+    if (session) refresh().catch(() => {});
     else {
+      refreshVersion.current += 1;
+      localStorage.removeItem(STORAGE_KEY);
+      setError("");
       setOrganizations([]);
       setOrganization(null);
       setInvitations([]);
       setLoading(false);
     }
+    return () => { refreshVersion.current += 1; };
   }, [session]);
 
   function selectOrganization(id) {
     const selected = organizations.find((item) => item.id === id);
     if (selected) {
+      refreshVersion.current += 1;
+      setLoading(false);
       setOrganization(selected);
       localStorage.setItem(STORAGE_KEY, selected.id);
     }
@@ -66,7 +78,7 @@ export function OrganizationProvider({ children }) {
   }
 
   const value = useMemo(
-    () => ({ organizations, organization, invitations, loading, error, selectOrganization, acceptInvitation }),
+    () => ({ organizations, organization, invitations, loading, error, refresh, selectOrganization, acceptInvitation }),
     [organizations, organization, invitations, loading, error],
   );
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;

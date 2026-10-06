@@ -1,0 +1,472 @@
+/* Tibbou sign-in page.
+ * Plain CSS, no framework dependency; every class is prefixed `tb-` so it
+ * can sit next to Tailwind without collisions.
+ * Fonts: Sora (UI, wordmark) + JetBrains Mono (labels, model names).
+ * Load them once in index.html (see CLAUDE_CODE_BRIEF.md). */
+
+/* ------------------------------------------------------------------ tokens */
+.tb-login {
+  --tb-ink: #0B1118;
+  --tb-paper: #F5F4EF;
+  --tb-white: #FFFFFF;
+  --tb-slate: #4E5866;
+  --tb-muted: #8A8578;
+  --tb-line: #DEDCD4;
+  --tb-jade: #0E9F79;
+  --tb-jade-text: #0A6B52;      /* jade darkened to pass 4.5:1 on paper */
+  --tb-jade-text-hover: #07513E;
+
+  --tb-bg: var(--tb-paper);
+  --tb-text: var(--tb-ink);
+  --tb-text-2: var(--tb-slate);
+  --tb-text-3: var(--tb-muted);
+  --tb-input-bg: var(--tb-white);
+  --tb-input-border: var(--tb-line);
+  --tb-link: var(--tb-jade-text);
+  --tb-link-hover: var(--tb-jade-text-hover);
+  --tb-primary-bg: var(--tb-ink);
+  --tb-primary-fg: var(--tb-paper);
+  --tb-secondary-bg: var(--tb-white);
+  --tb-panel-bg: #0B1118;
+
+  --tb-font: "Sora", system-ui, sans-serif;
+  --tb-mono: "JetBrains Mono", ui-monospace, monospace;
+  --tb-radius: 10px;
+  --tb-cycle: 7s;
+  --tb-ease: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.tb-login[data-theme="dark"] {
+  --tb-bg: #0B1118;
+  --tb-text: #F5F4EF;
+  --tb-text-2: #93A1B1;
+  --tb-text-3: #6E7C8C;
+  --tb-input-bg: #141E28;
+  --tb-input-border: #2A3644;
+  --tb-link: #3FD9AE;
+  --tb-link-hover: #7CE9C8;
+  --tb-primary-bg: #3FD9AE;
+  --tb-primary-fg: #06251C;
+  --tb-secondary-bg: transparent;
+  --tb-panel-bg: #131C25;
+}
+
+/* ------------------------------------------------------------------ layout */
+.tb-login {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  background: var(--tb-bg);
+  color: var(--tb-text);
+  font-family: var(--tb-font);
+  -webkit-font-smoothing: antialiased;
+}
+.tb-login *, .tb-login *::before, .tb-login *::after { box-sizing: border-box; }
+
+/* Film-grain overlay, self-generated via SVG turbulence (no external asset).
+   Sits above both columns, ignores clicks, and reads as texture rather
+   than pattern because the noise is dense and low-contrast. */
+.tb-login::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+}
+
+.tb-login__form-col {
+  width: 45%;
+  max-width: 648px;
+  min-width: 480px;
+  padding: 56px 88px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 48px;
+}
+
+.tb-login__mark { position: absolute; top: 28px; left: 32px; z-index: 2; }
+
+.tb-login__form-wrap { width: 100%; max-width: 472px; }
+
+.tb-login__title {
+  margin: 0 0 10px;
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.tb-login__lede {
+  margin: 0 0 36px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--tb-text-2);
+}
+
+.tb-login__form { display: flex; flex-direction: column; gap: 20px; }
+
+/* ------------------------------------------------------------------ fields */
+.tb-field { display: flex; flex-direction: column; gap: 7px; }
+.tb-field__row { display: flex; justify-content: space-between; align-items: baseline; }
+.tb-field__label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--tb-text-2);
+}
+.tb-field__input {
+  height: 52px;
+  padding: 0 16px;
+  font: 400 16px/1 var(--tb-font);
+  color: var(--tb-text);
+  background: var(--tb-input-bg);
+  border: 1px solid var(--tb-input-border);
+  border-radius: var(--tb-radius);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tb-field__input::placeholder { color: var(--tb-text-3); }
+.tb-field__input:focus-visible {
+  border-color: var(--tb-link);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tb-link) 22%, transparent);
+}
+
+.tb-check { display: flex; align-items: center; gap: 10px; margin-top: 2px; font-size: 14px; color: var(--tb-text-2); }
+.tb-check input { width: 17px; height: 17px; accent-color: var(--tb-link); margin: 0; }
+
+.tb-login__error {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #9B1C1C;
+  background: #FDECEC;
+  border-radius: 8px;
+}
+.tb-login[data-theme="dark"] .tb-login__error { color: #FFB4B4; background: #3A1717; }
+
+/* ------------------------------------------------------------------ buttons */
+.tb-btn {
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  font: 600 16px/1 var(--tb-font);
+  letter-spacing: -0.01em;
+  border-radius: var(--tb-radius);
+  cursor: pointer;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+.tb-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.tb-btn:focus-visible { outline: 2px solid var(--tb-link); outline-offset: 3px; }
+.tb-btn--primary { margin-top: 6px; color: var(--tb-primary-fg); background: var(--tb-primary-bg); border: none; }
+.tb-btn--primary:hover:not(:disabled) { opacity: 0.9; }
+.tb-btn--secondary {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--tb-text);
+  background: var(--tb-secondary-bg);
+  border: 1px solid var(--tb-input-border);
+}
+.tb-btn--secondary svg { color: var(--tb-text-2); }
+
+.tb-divider { display: flex; align-items: center; gap: 16px; margin: 4px 0; }
+.tb-divider span { flex: 1; height: 1px; background: var(--tb-input-border); }
+.tb-divider em { font: normal 11px/1 var(--tb-mono); letter-spacing: 0.14em; color: var(--tb-text-3); }
+
+.tb-link { color: var(--tb-link); font-weight: 500; text-decoration: none; }
+.tb-link:hover { color: var(--tb-link-hover); }
+.tb-link--small { font-size: 13px; }
+
+.tb-login__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--tb-text-2);
+}
+.tb-login__trust { font: 11px/1.4 var(--tb-mono); letter-spacing: 0.06em; color: var(--tb-text-3); }
+
+/* ------------------------------------------------------------------ panel */
+.tb-panel {
+  position: relative;
+  flex: 1;
+  padding: 60px 72px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  overflow: hidden;
+  background-color: var(--tb-panel-bg);
+  background-image:
+    repeating-linear-gradient(to right, rgba(245,244,239,0.035) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(to bottom, rgba(245,244,239,0.035) 0 1px, transparent 1px 64px);
+}
+.tb-panel__eyebrow { position: relative; z-index: 1; font: 11px/1 var(--tb-mono); letter-spacing: 0.22em; color: #6E7C8C; }
+.tb-panel__visual { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 56px; }
+
+/* Soft ambient glow behind the mark, echoes the mark's own jade/mint accents
+   without introducing new colours. Purely decorative. */
+.tb-panel__glow {
+  position: absolute;
+  top: -120px;
+  right: -100px;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(63,217,174,0.16) 0%, rgba(23,165,160,0.08) 45%, transparent 72%);
+  filter: blur(10px);
+  animation: tb-glow-drift 16s var(--tb-ease) infinite;
+  pointer-events: none;
+}
+.tb-panel__glow--2 {
+  top: auto;
+  right: auto;
+  bottom: -160px;
+  left: -140px;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(23,165,160,0.12) 0%, rgba(63,217,174,0.05) 45%, transparent 72%);
+  animation: tb-glow-drift 20s var(--tb-ease) infinite;
+  animation-delay: -8s;
+}
+
+.tb-rows { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 16px; max-width: 480px; }
+.tb-row { display: flex; align-items: center; gap: 18px; }
+.tb-row__name { width: 148px; flex-shrink: 0; font: 13px/1 var(--tb-mono); color: #93A1B1; }
+.tb-row__track { flex: 1; height: 10px; border-radius: 5px; background: rgba(245,244,239,0.08); }
+.tb-row__fill { height: 10px; border-radius: 5px; }
+.tb-row__fill--a { width: 64%; background: #F5F4EF; animation: tb-row-a var(--tb-cycle) var(--tb-ease) infinite; }
+.tb-row__fill--b { width: 31%; background: #3FD9AE; animation: tb-row-b var(--tb-cycle) var(--tb-ease) infinite; }
+.tb-row__fill--c { width: 19%; background: #17A5A0; animation: tb-row-c var(--tb-cycle) var(--tb-ease) infinite; }
+.tb-row__fill--d { width: 46%; background: #8FD6C0; animation: tb-row-d var(--tb-cycle) var(--tb-ease) infinite; }
+
+.tb-panel__copy { position: relative; z-index: 1; max-width: 520px; }
+.tb-panel__headline { margin: 0; font-size: 26px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.35; color: #F5F4EF; }
+.tb-panel__body { margin: 14px 0 0; font-size: 15px; line-height: 1.6; color: #93A1B1; }
+
+/* Small glass stat chips scattered around the panel to read as live
+   telemetry rather than decoration — each names a real thing this
+   product does (lineage depth, cost delta, freshness). */
+.tb-chip {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(245,244,239,0.06);
+  border: 1px solid rgba(245,244,239,0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font: 12px/1 var(--tb-mono);
+  color: #93A1B1;
+  white-space: nowrap;
+}
+.tb-chip strong { font-weight: 500; color: #F5F4EF; }
+.tb-chip--mint strong { color: #3FD9AE; }
+/* All decorations below are confined to a right-hand column (right: 6-14%)
+   clear of the mark/wordmark/rows/copy, which all live on the left. */
+.tb-chip--1 { top: 6%; right: 6%; animation: tb-chip-float 9s var(--tb-ease) infinite; }
+.tb-chip--3 { top: 46%; right: 6%; animation: tb-chip-float 10s var(--tb-ease) infinite; animation-delay: -2s; }
+.tb-chip--4 { bottom: 6%; right: 6%; animation: tb-chip-float 12s var(--tb-ease) infinite; animation-delay: -6s; }
+
+/* Ghost segments: faint echoes of the mark's own bar/dot shapes, scattered
+   as pure texture. Same pill geometry as TibbouMark, not new shapes. */
+.tb-ghost {
+  position: absolute;
+  z-index: 0;
+  border-radius: 999px;
+  background: #F5F4EF;
+  opacity: 0.09;
+  animation: tb-ghost-drift 18s var(--tb-ease) infinite;
+}
+.tb-ghost--1 { top: 20%; right: 12%; width: 90px; height: 30px; animation-delay: -3s; }
+.tb-ghost--3 { bottom: 26%; right: 14%; width: 70px; height: 26px; animation-delay: -12s; }
+
+/* Bare floating text fragments — lighter than a chip (no box), for
+   texture between the chips without everything reading as a "card". */
+.tb-scrap {
+  position: absolute;
+  z-index: 1;
+  font: 11px/1 var(--tb-mono);
+  letter-spacing: 0.04em;
+  color: #4E5866;
+  animation: tb-chip-float 13s var(--tb-ease) infinite;
+}
+.tb-scrap--2 { bottom: 16%; right: 6%; animation-delay: -7s; }
+.tb-scrap--3 { top: 8%; left: 44%; animation-delay: -10s; }
+
+/* ------------------------------------------------------------------ mark */
+.tb-mark {
+  --s: 44px;
+  --tb-cycle: 7s;
+  --tb-ease: cubic-bezier(0.65, 0, 0.35, 1);
+  width: calc(var(--s) * 5.68);
+  height: calc(var(--s) * 3.84);
+  flex-shrink: 0;
+}
+/* Below 32px the dot is dropped; shrink the box to match (no dead space). */
+.tb-mark--no-dot { width: calc(var(--s) * 4.34); }
+
+/* Lockup: mark + "ıbbou" fused into one wordmark, the mark's dot doing
+   double duty as the tittle over the dotless ı. The word is pulled back
+   under the dot (negative margin) rather than simply following the mark's
+   full box, since the dot sits in otherwise-empty space above-right of
+   the stem. Tuned by eye — nudge tb-lockup__word's margin-left if the
+   dot doesn't land on the ı at a given size. */
+.tb-lockup { display: inline-flex; flex-wrap: nowrap; align-items: flex-end; }
+.tb-lockup__word {
+  flex-shrink: 0;
+  margin-left: calc(var(--s) * -0.85);
+  transform: translateY(calc(var(--s) * 0.25));
+  font: 600 calc(var(--s) * 4) / 1 var(--tb-font);
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+}
+.tb-lockup--dark .tb-lockup__word { color: #F5F4EF; }
+.tb-lockup--light .tb-lockup__word { color: #0B1118; }
+.tb-mark__bar { display: flex; align-items: center; gap: calc(var(--s) * 0.34); }
+.tb-mark__seg, .tb-mark__stem { display: block; height: var(--s); border-radius: calc(var(--s) / 2); }
+.tb-mark__seg--a   { width: calc(var(--s) * 2.30); }
+.tb-mark__seg--b   { width: calc(var(--s) * 1.70); }
+.tb-mark__seg--dot { width: var(--s); }
+.tb-mark__stem {
+  width: var(--s);
+  height: calc(var(--s) * 2.66);
+  margin-top: calc(var(--s) * 0.18);
+  /* centred under segments a+b: (4 S + gap) / 2 - S / 2 */
+  margin-left: calc((var(--s) * 4.34) / 2 - var(--s) / 2);
+}
+.tb-mark--dark  .tb-mark__seg--a,  .tb-mark--dark  .tb-mark__stem { background: #F5F4EF; }
+.tb-mark--dark  .tb-mark__seg--b   { background: #3FD9AE; }
+.tb-mark--dark  .tb-mark__seg--dot { background: #17A5A0; }
+.tb-mark--light .tb-mark__seg--a,  .tb-mark--light .tb-mark__stem { background: #0B1118; }
+.tb-mark--light .tb-mark__seg--b   { background: #0E9F79; }
+.tb-mark--light .tb-mark__seg--dot { background: #8FD6C0; }
+
+.tb-mark--animated .tb-mark__seg--a { animation: tb-seg-a var(--tb-cycle) var(--tb-ease) infinite; }
+.tb-mark--animated .tb-mark__seg--b { animation: tb-seg-b var(--tb-cycle) var(--tb-ease) infinite; }
+.tb-mark--animated .tb-mark__seg--dot { animation: tb-seg-dot var(--tb-cycle) var(--tb-ease) infinite; transform-origin: center; }
+
+/* 3D treatment for every mark instance app-wide — glossy per-piece shading
+   (gradient fill + inset highlight/shadow) layered on top of the flat
+   brand colours, plus a straight drop shadow for lift. Bars stay straight
+   (no perspective tilt) per team feedback — the depth reads through the
+   shading and shadow alone. Shadow scales with --s so it doesn't look
+   oversized on the small instances (sidebar, corners). Dark-theme colours
+   only for now, since every current usage is theme="dark". */
+.tb-mark--dark {
+  filter: drop-shadow(0 calc(var(--s) * 0.15) calc(var(--s) * 0.2) rgba(0, 0, 0, 0.3));
+}
+.tb-mark--dark .tb-mark__seg--a,
+.tb-mark--dark .tb-mark__stem {
+  background: linear-gradient(155deg, #ffffff 0%, #F5F4EF 45%, #cbc9be 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 calc(var(--s) * -0.0375) calc(var(--s) * 0.0625) rgba(0, 0, 0, 0.12);
+}
+.tb-mark--dark .tb-mark__seg--b {
+  background: linear-gradient(155deg, #8ff3d3 0%, #3FD9AE 45%, #1c9a78 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 calc(var(--s) * -0.0375) calc(var(--s) * 0.0625) rgba(0, 0, 0, 0.18);
+}
+.tb-mark--dark .tb-mark__seg--dot {
+  background: radial-gradient(circle at 32% 28%, #7ff3dd 0%, #17A5A0 55%, #0c6864 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 calc(var(--s) * -0.025) calc(var(--s) * 0.05) rgba(0, 0, 0, 0.2);
+}
+
+/* ------------------------------------------------------------------ motion */
+@keyframes tb-seg-a {
+  0%, 26%   { width: calc(var(--s) * 2.30); }
+  46%, 62%  { width: calc(var(--s) * 1.50); }
+  82%, 100% { width: calc(var(--s) * 2.30); }
+}
+@keyframes tb-seg-b {
+  0%, 26%   { width: calc(var(--s) * 1.70); }
+  46%, 62%  { width: calc(var(--s) * 2.50); }
+  82%, 100% { width: calc(var(--s) * 1.70); }
+}
+@keyframes tb-seg-dot {
+  0%, 26%   { transform: scale(1); }
+  46%, 62%  { transform: scale(1.2); }
+  82%, 100% { transform: scale(1); }
+}
+@keyframes tb-row-a {
+  0%, 26%   { width: 64%; }
+  46%, 62%  { width: 36%; }
+  82%, 100% { width: 64%; }
+}
+@keyframes tb-row-b {
+  0%, 26%   { width: 31%; }
+  46%, 62%  { width: 59%; }
+  82%, 100% { width: 31%; }
+}
+@keyframes tb-row-c {
+  0%, 26%   { width: 19%; }
+  46%, 62%  { width: 44%; }
+  82%, 100% { width: 19%; }
+}
+@keyframes tb-row-d {
+  0%, 26%   { width: 46%; }
+  46%, 62%  { width: 24%; }
+  82%, 100% { width: 46%; }
+}
+@keyframes tb-glow-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-24px, 28px) scale(1.06); }
+}
+@keyframes tb-chip-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes tb-ghost-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(10px, -14px) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-mark__seg, .tb-row__fill, .tb-panel__glow, .tb-chip, .tb-ghost, .tb-scrap { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------ small screens
+ * Below 1024px the brand panel becomes a banner above the form
+ * (matches design/Mobile.dc.html). */
+@media (max-width: 1023px) {
+  .tb-login { flex-direction: column; }
+  .tb-panel {
+    order: -1;
+    flex: none;
+    height: 246px;
+    padding: 40px 28px 30px;
+    gap: 0;
+    background-image:
+      repeating-linear-gradient(to right, rgba(245,244,239,0.04) 0 1px, transparent 1px 48px),
+      repeating-linear-gradient(to bottom, rgba(245,244,239,0.04) 0 1px, transparent 1px 48px);
+  }
+  .tb-panel__eyebrow { order: 2; font-size: 10px; letter-spacing: 0.2em; }
+  .tb-panel__visual { order: 1; }
+  .tb-panel .tb-mark { --s: 27px !important; }
+  .tb-rows, .tb-panel__copy, .tb-panel__glow, .tb-chip, .tb-ghost, .tb-scrap { display: none; }
+  .tb-login__mark { display: none; }
+
+  .tb-login__form-col {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1;
+    padding: 34px 28px 30px;
+  }
+  .tb-login__form-wrap { max-width: 520px; }
+  .tb-login__title { font-size: 30px; margin-bottom: 8px; }
+  .tb-login__lede { font-size: 15px; margin-bottom: 28px; }
+  .tb-login__form { gap: 16px; }
+  .tb-field__input { height: 50px; }
+  .tb-btn { height: 52px; }
+  .tb-login__footer { justify-content: center; }
+  .tb-login__trust { display: none; }
+}

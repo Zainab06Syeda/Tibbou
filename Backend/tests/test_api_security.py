@@ -76,7 +76,8 @@ class ApiSecurityTests(unittest.TestCase):
         self.assertIn("/api/v1/organizations/{organization_id}/admin", paths)
         self.assertIn("/api/v1/invitations", paths)
         self.assertIn("/api/v1/invitations/{invitation_id}/accept", paths)
-        self.assertNotIn("post", paths["/api/v1/organizations"])
+        self.assertIn("post", paths["/api/v1/organizations"])
+        self.assertNotIn("/api/v1/organizations/domain-join", paths)
         schemas = app.openapi()["components"]["schemas"]
         create_fields = schemas["SnowflakeConnectionCreate"]["properties"]
         read_fields = schemas["SnowflakeConnectionRead"]["properties"]

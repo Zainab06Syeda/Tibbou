@@ -359,6 +359,7 @@ class DeploymentReadinessTests(unittest.TestCase):
             names = set(bundle.namelist())
         self.assertIn("Procfile", names)
         self.assertIn("app/main.py", names)
+        self.assertIn("app/permissions.json", names)
         self.assertIn(".platform/nginx/conf.d/elasticbeanstalk/uploads.conf", names)
         self.assertIn("certs/supabase-ca.crt", names)
         self.assertFalse(any(".env" in name or name.endswith(".key") for name in names))

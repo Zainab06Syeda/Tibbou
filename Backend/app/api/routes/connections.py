@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import OrganizationAccess, require_admin, require_viewer
+from app.auth import OrganizationAccess
+from app.permissions import require_capability
 from app.db import get_db
 from app.models.snowflake_connections import SnowflakeConnection
 from app.schemas.connections import (
@@ -52,7 +53,7 @@ def _read_connection(connection: SnowflakeConnection) -> SnowflakeConnectionRead
 
 @router.get("", response_model=list[SnowflakeConnectionRead])
 def list_connections(
-    access: OrganizationAccess = Depends(require_viewer), db: Session = Depends(get_db)
+    access: OrganizationAccess = Depends(require_capability("view_data")), db: Session = Depends(get_db)
 ) -> list[SnowflakeConnectionRead]:
     connections = (
         db.query(SnowflakeConnection)
@@ -66,7 +67,7 @@ def list_connections(
 @router.post("", response_model=SnowflakeConnectionRead, status_code=status.HTTP_201_CREATED)
 def create_connection(
     payload: SnowflakeConnectionCreate,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> SnowflakeConnectionRead:
     key_pair = generate_key_pair()
@@ -111,7 +112,7 @@ def create_connection(
 def update_connection(
     connection_id: UUID,
     payload: SnowflakeConnectionUpdate,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> SnowflakeConnectionRead:
     connection = _find_connection(db, access.organization_id, connection_id)
@@ -141,7 +142,7 @@ def update_connection(
 @router.post("/{connection_id}/validate", response_model=SnowflakeConnectionRead)
 def validate_snowflake_connection(
     connection_id: UUID,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> SnowflakeConnectionRead:
     connection = _find_connection(db, access.organization_id, connection_id)
@@ -182,7 +183,7 @@ def validate_snowflake_connection(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def disable_connection(
     connection_id: UUID,
-    access: OrganizationAccess = Depends(require_admin),
+    access: OrganizationAccess = Depends(require_capability("manage_connection")),
     db: Session = Depends(get_db),
 ) -> None:
     connection = _find_connection(db, access.organization_id, connection_id)

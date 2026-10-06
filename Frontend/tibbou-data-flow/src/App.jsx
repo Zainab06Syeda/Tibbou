@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 
 import Layout from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -6,7 +6,8 @@ import WorkspaceGate from "@/components/WorkspaceGate";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { OrganizationProvider } from "@/contexts/OrganizationContext";
 import PageNotFound from "@/lib/PageNotFound";
-import AdminDashboard from "@/pages/AdminDashboard";
+import SettingsMembers from "@/pages/SettingsMembers";
+import SettingsConnection from "@/pages/SettingsConnection";
 import CostTracking from "@/pages/CostTracking";
 import Dashboard from "@/pages/Dashboard";
 import Datasets from "@/pages/Datasets";
@@ -28,7 +29,9 @@ export default function App() {
                 <Route path="/datasets" element={<Datasets />} />
                 <Route path="/lineage" element={<Lineage />} />
                 <Route path="/costs" element={<CostTracking />} />
-                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/admin" element={<Navigate to="/settings/members" replace />} />
+                <Route path="/settings/members" element={<SettingsMembers />} />
+                <Route path="/settings/connection" element={<SettingsConnection />} />
               </Route>
             </Route>
           </Route>
