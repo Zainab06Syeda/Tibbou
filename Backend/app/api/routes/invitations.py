@@ -65,6 +65,11 @@ def accept_invitation(
             detail="Authenticated account has no email address",
         )
     set_request_user_context(db, user.id, email)
+    # Serialize acceptance without requiring UPDATE access to invitations.
+    db.execute(
+        text("select pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+        {"scope": f"tibbou:invitation:{invitation_id}"},
+    )
     invitation = (
         db.query(OrganizationInvitation)
         .filter(
@@ -72,7 +77,6 @@ def accept_invitation(
             OrganizationInvitation.email == email,
             OrganizationInvitation.expires_at > func.now(),
         )
-        .with_for_update()
         .one_or_none()
     )
     if invitation is None:

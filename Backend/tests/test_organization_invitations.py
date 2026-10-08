@@ -32,7 +32,6 @@ USER_ID = UUID("10000000-0000-0000-0000-000000000001")
 def query_returning(value):
     query = MagicMock()
     query.filter.return_value.one_or_none.return_value = value
-    query.filter.return_value.with_for_update.return_value.one_or_none.return_value = value
     return query
 
 
@@ -233,8 +232,9 @@ class OrganizationInvitationTests(unittest.TestCase):
         organization_query = MagicMock()
         organization_query.filter.return_value.one.return_value = organization
         db = MagicMock()
+        invitation_query = query_returning(invitation)
         db.query.side_effect = [
-            query_returning(invitation),
+            invitation_query,
             query_returning(None),
             organization_query,
         ]
@@ -249,10 +249,14 @@ class OrganizationInvitationTests(unittest.TestCase):
         self.assertEqual(db.flush.call_count, 2)
         db.commit.assert_called_once()
         self.assertEqual(result.id, ORGANIZATION_ID)
+        invitation_query.filter.return_value.with_for_update.assert_not_called()
+        locks = [call for call in db.execute.call_args_list if "pg_advisory_xact_lock" in str(call.args[0])]
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(locks[0].args[1], {"scope": f"tibbou:invitation:{INVITATION_ID}"})
 
     def test_wrong_email_or_expired_invitation_is_hidden(self):
         db = MagicMock()
-        db.query.return_value.filter.return_value.with_for_update.return_value.one_or_none.return_value = None
+        db.query.return_value.filter.return_value.one_or_none.return_value = None
         with self.assertRaises(HTTPException) as raised:
             accept_invitation(invitation_id=INVITATION_ID, user=self.user, db=db)
         self.assertEqual(raised.exception.status_code, 404)
