@@ -120,7 +120,7 @@ export default function SettingsMembers() {
       setData((current) => ({
         ...current,
         memberships: current.memberships.map((item) =>
-          item.user_id === membership.user_id ? updated : item
+          item.user_id === membership.user_id ? { ...item, role: updated.role } : item
         ),
       }));
       if (membership.user_id === user?.id) await refreshOrganizations();
@@ -155,7 +155,7 @@ export default function SettingsMembers() {
       setData((current) => ({
         ...current,
         memberships: current.memberships.map((item) =>
-          item.user_id === membership.user_id ? updated : item
+          item.user_id === membership.user_id ? { ...item, role: updated.role } : item
         ),
       }));
     } catch (requestError) {
@@ -348,14 +348,27 @@ export default function SettingsMembers() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead><tr className="border-b border-border bg-secondary/20"><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">User ID</th><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Role</th><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Added</th>{canManageMembers ? <th className="px-5 py-3 text-right text-xs uppercase text-muted-foreground">Action</th> : null}</tr></thead>
+            <thead><tr className="border-b border-border bg-secondary/20"><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Member</th><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Role</th><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Added</th>{canManageMembers ? <th className="px-5 py-3 text-right text-xs uppercase text-muted-foreground">Action</th> : null}</tr></thead>
             <tbody>
               {data.memberships.map((membership) => {
                 const canModify = canManageMembers && (membership.role !== "owner" || isOwner);
                 const busy = busyId === membership.user_id;
                 return (
                   <tr key={membership.user_id} className="border-b border-border/60 last:border-0">
-                    <td className="px-5 py-3 font-mono text-xs">{membership.user_id}</td>
+                    <td className="px-5 py-3 text-sm">
+                      <span className="font-medium">
+                        {membership.display_name || membership.email || "Unknown member"}
+                      </span>
+                      {membership.user_id === user?.id ? (
+                        <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+                      ) : null}
+                      {membership.display_name && membership.email ? (
+                        <span className="block text-xs text-muted-foreground">{membership.email}</span>
+                      ) : null}
+                      {!membership.display_name && !membership.email ? (
+                        <span className="block font-mono text-xs text-muted-foreground">{membership.user_id}</span>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-3 text-sm capitalize">
                       {canModify && membership.role !== "owner" ? (
                         <select

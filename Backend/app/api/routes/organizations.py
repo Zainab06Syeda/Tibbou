@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg2.errors import RaiseException
+from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -97,6 +98,15 @@ def get_admin_dashboard(
         .order_by(OrganizationMembership.created_at, OrganizationMembership.user_id)
         .all()
     )
+    # Emails and names live in Supabase's auth.users, which the runtime role
+    # can't read; this function returns them to owners/admins of this org only.
+    profiles = {
+        row.user_id: row
+        for row in db.execute(
+            text("select * from private.list_organization_member_profiles(:organization_id)"),
+            {"organization_id": str(access.organization_id)},
+        )
+    }
     invitations = (
         db.query(OrganizationInvitation)
         .filter(OrganizationInvitation.organization_id == access.organization_id)
@@ -111,7 +121,16 @@ def get_admin_dashboard(
             role=access.role,
             created_at=organization.created_at,
         ),
-        memberships=memberships,
+        memberships=[
+            OrganizationMembershipRead(
+                user_id=membership.user_id,
+                role=membership.role,
+                created_at=membership.created_at,
+                email=getattr(profiles.get(membership.user_id), "email", None),
+                display_name=getattr(profiles.get(membership.user_id), "display_name", None),
+            )
+            for membership in memberships
+        ],
         invitations=invitations,
         current_user=OrganizationAdminCurrentUserRead(
             id=access.user.id,

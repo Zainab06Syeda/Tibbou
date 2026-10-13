@@ -93,6 +93,40 @@ class AdminDashboardTests(unittest.TestCase):
         self.assertEqual(organization_query.filter.call_args.args[0].right.value, ORGANIZATION_ID)
         self.assertEqual(membership_query.filter.call_args.args[0].right.value, ORGANIZATION_ID)
 
+    def test_members_are_listed_with_email_and_name_not_just_an_id(self):
+        created_at = datetime(2026, 9, 10, tzinfo=timezone.utc)
+        named = UUID("10000000-0000-0000-0000-000000000002")
+        email_only = UUID("10000000-0000-0000-0000-000000000003")
+        no_profile = UUID("10000000-0000-0000-0000-000000000004")
+        organization = SimpleNamespace(
+            id=ORGANIZATION_ID, name="Organization One", slug="organization-one", created_at=created_at
+        )
+        membership_query = MagicMock()
+        membership_query.filter.return_value.order_by.return_value.all.return_value = [
+            SimpleNamespace(user_id=user_id, role="viewer", created_at=created_at)
+            for user_id in (named, email_only, no_profile)
+        ]
+        invitation_query = MagicMock()
+        invitation_query.filter.return_value.order_by.return_value.all.return_value = []
+        db = MagicMock()
+        db.query.side_effect = [query_returning(organization), membership_query, invitation_query]
+        db.execute.return_value = [
+            SimpleNamespace(user_id=named, email="ada@example.com", display_name="Ada Lovelace"),
+            SimpleNamespace(user_id=email_only, email="sam@example.com", display_name=None),
+        ]
+
+        result = get_admin_dashboard(
+            access=OrganizationAccess(ORGANIZATION_ID, self.user, "admin"), db=db
+        )
+
+        statement, parameters = db.execute.call_args.args
+        self.assertIn("private.list_organization_member_profiles", str(statement))
+        self.assertEqual(parameters, {"organization_id": str(ORGANIZATION_ID)})
+        self.assertEqual(
+            [(row.email, row.display_name) for row in result.memberships],
+            [("ada@example.com", "Ada Lovelace"), ("sam@example.com", None), (None, None)],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
