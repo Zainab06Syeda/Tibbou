@@ -2,7 +2,7 @@
  * Plain CSS, no framework dependency; every class is prefixed `tb-` so it
  * can sit next to Tailwind without collisions.
  * Fonts: Sora (UI, wordmark) + JetBrains Mono (labels, model names).
- * Load them once in index.html (see CLAUDE_CODE_BRIEF.md). */
+ * Load them once in index.html. */
 
 /* ------------------------------------------------------------------ tokens */
 .tb-login {
