@@ -20,7 +20,9 @@ def list_datasets(
 ) -> list[DatasetRead]:
     datasets = (
         db.query(Dataset)
-        .filter(Dataset.organization_id == access.organization_id)
+        # A newer dbt manifest marks models it no longer contains inactive;
+        # listing them kept old projects on the dashboard indefinitely.
+        .filter(Dataset.organization_id == access.organization_id, Dataset.is_active.is_(True))
         .order_by(Dataset.created_at.desc(), Dataset.id.desc())
         .limit(limit)
         .all()

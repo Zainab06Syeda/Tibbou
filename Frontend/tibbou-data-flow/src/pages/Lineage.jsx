@@ -280,7 +280,13 @@ export default function Lineage() {
           </div>
         </div>
 
-        {latestDbtIngestion ? (
+        {latestDbtIngestion && !["success", "partial"].includes(latestDbtIngestion.status) ? (
+          <div className="mt-4 rounded-xl border border-dashed border-border bg-secondary/10 p-4 text-sm text-muted-foreground">
+            {latestDbtIngestion.status === "failed"
+              ? "The most recent manifest could not be processed. Check that it is a valid dbt manifest.json and upload it again."
+              : "Your most recent manifest is waiting to be processed. Counts and the graph below update once it finishes; refresh this page to check."}
+          </div>
+        ) : latestDbtIngestion ? (
           <div className="mt-4 grid gap-4 md:grid-cols-4">
             <article className="rounded-xl border border-border bg-secondary/20 p-4">
               <div className="flex items-center justify-between">
