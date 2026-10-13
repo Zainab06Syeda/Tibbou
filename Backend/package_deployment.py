@@ -6,6 +6,9 @@ from zipfile import ZIP_DEFLATED, ZipFile
 root = Path(__file__).resolve().parent
 files = [root / "Procfile", root / "requirements.txt"]
 files += sorted((root / "app").rglob("*.py"))
+# The role/permission matrix is data the app reads at import time; without
+# it every route fails to load and the whole API returns 502.
+files.append(root / "app" / "permissions.json")
 files += sorted((root / ".platform").rglob("*.conf"))
 files += sorted((root / "deploy").glob("*.service"))
 certificate = root / "certs" / "supabase-ca.crt"
