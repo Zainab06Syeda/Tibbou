@@ -21,7 +21,7 @@ ACTOR_ID = UUID("10000000-0000-0000-0000-000000000001")
 TARGET_ID = UUID("10000000-0000-0000-0000-000000000002")
 
 
-def db_returning_membership(role, *, commit_raises=None):
+def db_returning_membership(role, *, actor_role="owner", commit_raises=None):
     db = MagicMock()
     membership = MagicMock(
         organization_id=ORGANIZATION_ID,
@@ -29,7 +29,8 @@ def db_returning_membership(role, *, commit_raises=None):
         role=role,
         created_at=datetime.now(timezone.utc),
     )
-    db.query.return_value.filter.return_value.one_or_none.return_value = membership
+    db.query.return_value.filter.return_value.scalar.return_value = actor_role
+    db.query.return_value.filter.return_value.populate_existing.return_value.one_or_none.return_value = membership
     if commit_raises is not None:
         db.commit.side_effect = commit_raises
     return db, membership
@@ -40,7 +41,7 @@ class ChangeMemberRoleTests(unittest.TestCase):
         self.actor = CurrentUser(id=ACTOR_ID, email="owner@example.com", session_id=None)
 
     def test_admin_can_promote_an_operator_to_admin_only_if_owner(self):
-        db, membership = db_returning_membership("operator")
+        db, membership = db_returning_membership("operator", actor_role="admin")
         admin_access = OrganizationAccess(ORGANIZATION_ID, self.actor, "admin")
         with self.assertRaises(HTTPException) as raised:
             change_member_role(
@@ -64,7 +65,7 @@ class ChangeMemberRoleTests(unittest.TestCase):
         db.commit.assert_called_once()
 
     def test_admin_cannot_change_an_owners_role(self):
-        db, membership = db_returning_membership("owner")
+        db, membership = db_returning_membership("owner", actor_role="admin")
         admin_access = OrganizationAccess(ORGANIZATION_ID, self.actor, "admin")
         with self.assertRaises(HTTPException) as raised:
             change_member_role(
@@ -109,7 +110,8 @@ class ChangeMemberRoleTests(unittest.TestCase):
 
     def test_missing_member_is_404(self):
         db = MagicMock()
-        db.query.return_value.filter.return_value.one_or_none.return_value = None
+        db.query.return_value.filter.return_value.scalar.return_value = "owner"
+        db.query.return_value.filter.return_value.populate_existing.return_value.one_or_none.return_value = None
         owner_access = OrganizationAccess(ORGANIZATION_ID, self.actor, "owner")
         with self.assertRaises(HTTPException) as raised:
             change_member_role(
@@ -126,7 +128,7 @@ class RemoveMemberTests(unittest.TestCase):
         self.actor = CurrentUser(id=ACTOR_ID, email="owner@example.com", session_id=None)
 
     def test_admin_cannot_remove_an_owner(self):
-        db, membership = db_returning_membership("owner")
+        db, membership = db_returning_membership("owner", actor_role="admin")
         admin_access = OrganizationAccess(ORGANIZATION_ID, self.actor, "admin")
         with self.assertRaises(HTTPException) as raised:
             remove_member(user_id=TARGET_ID, access=admin_access, db=db)
@@ -134,7 +136,7 @@ class RemoveMemberTests(unittest.TestCase):
         db.delete.assert_not_called()
 
     def test_admin_can_remove_a_viewer(self):
-        db, membership = db_returning_membership("viewer")
+        db, membership = db_returning_membership("viewer", actor_role="admin")
         admin_access = OrganizationAccess(ORGANIZATION_ID, self.actor, "admin")
         remove_member(user_id=TARGET_ID, access=admin_access, db=db)
         db.delete.assert_called_once_with(membership)
@@ -168,7 +170,8 @@ class TransferOwnershipTests(unittest.TestCase):
 
     def test_missing_member_is_404(self):
         db = MagicMock()
-        db.query.return_value.filter.return_value.one_or_none.return_value = None
+        db.query.return_value.filter.return_value.scalar.return_value = "owner"
+        db.query.return_value.filter.return_value.populate_existing.return_value.one_or_none.return_value = None
         owner_access = OrganizationAccess(ORGANIZATION_ID, self.actor, "owner")
         with self.assertRaises(HTTPException) as raised:
             transfer_ownership(user_id=TARGET_ID, access=owner_access, db=db)
