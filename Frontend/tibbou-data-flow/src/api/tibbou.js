@@ -14,7 +14,11 @@ async function apiRequest(path, options = {}, { publicRequest = false } = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const contentType = response.headers.get("content-type") || "";
   const body = contentType.includes("application/json") ? await response.json() : await response.text();
-  if (!response.ok) throw new Error(body?.detail || `Request failed for ${path}.`);
+  if (!response.ok) {
+    const detail = Array.isArray(body?.detail)
+      ? body.detail.map((item) => item.msg).join("; ") : body?.detail;
+    throw Object.assign(new Error(detail || "Request failed. Please try again."), { status: response.status });
+  }
   return body;
 }
 function organizationPath(path) {
@@ -29,6 +33,22 @@ export function getHealth() {
 
 export function getOrganizations() {
   return apiRequest("/api/v1/organizations");
+}
+
+export function getDomainMatch() {
+  return apiRequest("/api/v1/organizations/domain-match");
+}
+
+export function createOrganization(payload) {
+  return apiRequest("/api/v1/organizations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function requestToJoinByDomain() {
+  return apiRequest("/api/v1/organizations/domain-join-requests", { method: "POST" });
 }
 
 export function getInvitations() {
@@ -55,8 +75,51 @@ export function deleteInvitation(invitationId) {
   });
 }
 
+export function resendInvitation(invitationId) {
+  return apiRequest(organizationPath(`/invitations/${encodeURIComponent(invitationId)}/resend`), {
+    method: "POST",
+  });
+}
+
 export function getAdminDashboard() {
   return apiRequest(organizationPath("/admin"));
+}
+
+export function updateMemberRole(userId, role) {
+  return apiRequest(organizationPath(`/memberships/${encodeURIComponent(userId)}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeMember(userId) {
+  return apiRequest(organizationPath(`/memberships/${encodeURIComponent(userId)}`), {
+    method: "DELETE",
+  });
+}
+
+export function transferOwnership(userId) {
+  return apiRequest(
+    organizationPath(`/memberships/${encodeURIComponent(userId)}/transfer-ownership`),
+    { method: "POST" }
+  );
+}
+
+export function listJoinRequests() {
+  return apiRequest(organizationPath("/join-requests"));
+}
+
+export function approveJoinRequest(requestId) {
+  return apiRequest(organizationPath(`/join-requests/${encodeURIComponent(requestId)}/approve`), {
+    method: "POST",
+  });
+}
+
+export function denyJoinRequest(requestId) {
+  return apiRequest(organizationPath(`/join-requests/${encodeURIComponent(requestId)}/deny`), {
+    method: "POST",
+  });
 }
 
 export function getDatasets() {
@@ -69,6 +132,47 @@ export function getLineageEdges() {
 
 export function getCostSnapshots() {
   return apiRequest(organizationPath("/costs"));
+}
+
+export function listConnections() {
+  return apiRequest(organizationPath("/snowflake-connections"));
+}
+
+export function createConnection(payload) {
+  return apiRequest(organizationPath("/snowflake-connections"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateConnection(connectionId, payload) {
+  return apiRequest(organizationPath(`/snowflake-connections/${encodeURIComponent(connectionId)}`), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function validateConnection(connectionId) {
+  return apiRequest(
+    organizationPath(`/snowflake-connections/${encodeURIComponent(connectionId)}/validate`),
+    { method: "POST" }
+  );
+}
+
+export function disableConnection(connectionId) {
+  return apiRequest(organizationPath(`/snowflake-connections/${encodeURIComponent(connectionId)}`), {
+    method: "DELETE",
+  });
+}
+
+export function syncSnowflake(connectionId) {
+  return apiRequest(organizationPath("/ingestion/snowflake/query-usage"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ connection_id: connectionId }),
+  });
 }
 
 export function getLatestSnowflakeDatasetCreditSummaries() {

@@ -1,0 +1,171 @@
+/* Onboarding-specific additions on top of the shared tb-* split-shell
+ * design system (./components/auth/login.css). Only defines pieces the
+ * login page never needed -- a step tracker, cards, a dropzone, an
+ * invited-member list -- all built from the same --tb-* tokens so they
+ * pick up light/dark automatically.
+ *
+ * Onboarding reuses login.css's tokens and its .tb-panel animated brand
+ * visual, but not its side-by-side layout: here the panel is stretched to
+ * fill the whole viewport as a background, and the form sits in a single
+ * centered, frosted-glass card on top of it (--onboard modifier below). */
+
+.tb-login--onboard { display: block; position: relative; overflow: hidden; }
+.tb-login--onboard .tb-panel { position: absolute; inset: 0; z-index: 0; }
+
+.tb-onboard-center {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+.tb-onboard-card {
+  width: 100%;
+  max-width: 760px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  background: rgba(11, 17, 24, 0.62);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(245, 244, 239, 0.1);
+  border-radius: 24px;
+  padding: 44px 48px;
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
+}
+.tb-onboard-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.tb-signout {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: 500 13px/1 var(--tb-font);
+  color: var(--tb-text-2);
+}
+.tb-signout:hover { color: var(--tb-link); }
+
+@media (max-width: 640px) {
+  .tb-onboard-center { padding: 24px 16px; }
+  .tb-onboard-card { padding: 32px 24px; border-radius: 20px; }
+}
+
+/* login.css collapses .tb-panel into a small top banner (and hides most of
+ * its decoration) below 1024px for the side-by-side layout; onboarding
+ * keeps it full-bleed at every width instead, so undo that here. Selectors
+ * below match login.css's own specificity plus one extra class, so no
+ * !important is needed to win. */
+@media (max-width: 1023px) {
+  .tb-login--onboard .tb-panel {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+    order: 0;
+    flex: none;
+  }
+  .tb-login--onboard .tb-rows { display: flex; }
+  .tb-login--onboard .tb-panel__copy { display: block; }
+  .tb-login--onboard .tb-panel__glow { display: block; }
+  .tb-login--onboard .tb-chip { display: flex; }
+  .tb-login--onboard .tb-ghost { display: block; }
+  .tb-login--onboard .tb-scrap { display: block; }
+}
+
+.tb-steps { display: flex; align-items: center; margin-bottom: 28px; }
+.tb-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--tb-input-border);
+  color: var(--tb-text-3);
+  font: 600 12px/1 var(--tb-mono);
+  flex-shrink: 0;
+  transition: border-color 0.2s, background-color 0.2s, color 0.2s;
+}
+.tb-step--active { border-color: var(--tb-link); color: var(--tb-text); background: rgba(63, 217, 174, 0.14); }
+.tb-step--done { border-color: var(--tb-link); background: var(--tb-link); color: var(--tb-primary-fg); }
+.tb-step-line { flex: 1; height: 1px; min-width: 12px; background: var(--tb-input-border); margin: 0 6px; }
+.tb-step-line--done { background: var(--tb-link); }
+
+.tb-card {
+  border: 1px solid var(--tb-input-border);
+  background: var(--tb-input-bg);
+  border-radius: var(--tb-radius);
+  padding: 16px;
+}
+.tb-card + .tb-card { margin-top: 12px; }
+.tb-card__row { display: flex; align-items: center; gap: 12px; }
+.tb-card__title { margin: 0; font-size: 14px; font-weight: 600; color: var(--tb-text); }
+.tb-card__meta { margin: 4px 0 0; font-size: 12px; color: var(--tb-text-2); }
+
+.tb-hint {
+  border: 1px solid var(--tb-input-border);
+  background: var(--tb-input-bg);
+  border-radius: var(--tb-radius);
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tb-text-2);
+}
+
+.tb-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed var(--tb-input-border);
+  background: var(--tb-input-bg);
+  border-radius: var(--tb-radius);
+  padding: 36px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.tb-dropzone:hover { border-color: var(--tb-link); }
+.tb-dropzone svg { color: var(--tb-link); }
+.tb-dropzone__title { font-size: 14px; font-weight: 500; color: var(--tb-text); }
+.tb-dropzone__hint { font-size: 12px; color: var(--tb-text-3); }
+
+.tb-invited-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.tb-invited-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--tb-input-border);
+  background: var(--tb-input-bg);
+  border-radius: var(--tb-radius);
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.tb-text-success { color: #3FD9AE; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.tb-text-warn { color: #E8B34D; font-size: 12px; white-space: nowrap; }
+.tb-text-muted { color: var(--tb-text-2); font-size: 13px; }
+
+.tb-section-divider { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--tb-input-border); }
+.tb-stack { display: flex; flex-direction: column; gap: 12px; }
+.tb-row-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.tb-row-actions .tb-btn { width: auto; padding: 0 22px; }
+
+.tb-spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--tb-input-border);
+  border-top-color: var(--tb-link);
+  animation: tb-spin 0.8s linear infinite;
+}
+@keyframes tb-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-spinner { animation: none; }
+}

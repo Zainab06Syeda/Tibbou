@@ -86,6 +86,8 @@ def _decode_access_token(token: str) -> dict:
             algorithms=[algorithm],
             audience=audience,
             issuer=issuer,
+            # Allow only two seconds of clock skew for iat, nbf and exp.
+            leeway=2,
             options={"require": ["exp", "iat", "sub", "iss", "aud"]},
         )
     except HTTPException:

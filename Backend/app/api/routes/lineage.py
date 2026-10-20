@@ -56,12 +56,13 @@ def create_lineage_edge(
     )
     db.add(edge)
     try:
+        db.flush()
+        response = LineageEdgeRead.model_validate(edge)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Lineage edge already exists") from exc
-    db.refresh(edge)
-    return edge
+    return response
 
 
 @router.get("/{edge_id}", response_model=LineageEdgeRead)

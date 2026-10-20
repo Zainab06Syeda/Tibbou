@@ -1,8 +1,20 @@
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.engine import make_url
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+if os.getenv("MIGRATION_DATABASE_URL") or os.getenv("WORKER_DATABASE_URL"):
+    raise RuntimeError("Worker and migration credentials must not be available to the API")
+database_url = os.getenv("DATABASE_URL")
+if not database_url or (make_url(database_url).username or "").split(".", 1)[0] != "tibbou_api_login":
+    raise RuntimeError("API requires the tibbou_api_login database role")
+if not 1 <= int(os.getenv("DATABASE_POOL_SIZE", "3")) <= 3 or int(os.getenv("DATABASE_MAX_OVERFLOW", "0")) != 0:
+    raise RuntimeError("API database pool must use at most 3 connections without overflow")
 
 from app.api.router import api_router
 from app.api.routes.ingestion import max_dbt_manifest_bytes

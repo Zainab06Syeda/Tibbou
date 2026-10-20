@@ -40,12 +40,13 @@ def create_dataset(
     )
     db.add(dataset)
     try:
+        db.flush()
+        response = DatasetRead.model_validate(dataset)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset already exists") from exc
-    db.refresh(dataset)
-    return dataset
+    return response
 
 
 @router.get("/{dataset_id}", response_model=DatasetRead)

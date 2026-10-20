@@ -1,6 +1,7 @@
 from app.models.cost_snapshots import CostSnapshot
 from app.models.datasets import Dataset
 from app.models.lineage_edges import LineageEdge
+from app.models.organization_join_requests import OrganizationJoinRequest
 from app.models.organization_invitations import OrganizationInvitation
 from app.models.organization_memberships import OrganizationMembership
 from app.models.organizations import Organization
@@ -16,6 +17,7 @@ __all__ = [
     "LineageEdge",
     "Organization",
     "OrganizationInvitation",
+    "OrganizationJoinRequest",
     "OrganizationMembership",
     "QueryDatasetAllocation",
     "QueryUsage",
