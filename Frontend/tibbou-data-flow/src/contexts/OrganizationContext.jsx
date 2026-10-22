@@ -32,7 +32,9 @@ export function OrganizationProvider({ children }) {
       setOrganizations(rows);
       setOrganization(selected);
       if (selected) localStorage.setItem(STORAGE_KEY, selected.id);
-      setInvitations(selected ? [] : await getInvitations());
+      // Loaded even for people who already belong to a workspace, so an
+      // invitation to a second one still reaches them.
+      setInvitations(await getInvitations());
       setError("");
     } catch (requestError) {
       setError(requestError.message);
@@ -66,8 +68,9 @@ export function OrganizationProvider({ children }) {
   }
 
   const value = useMemo(
-    () => ({ organizations, organization, invitations, loading, error, selectOrganization, acceptInvitation }),
-    [organizations, organization, invitations, loading, error],
+    () => ({ organizations, organization, invitations, loading, error, refresh, selectOrganization, acceptInvitation }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the functions only read the state listed here
+    [session, organizations, organization, invitations, loading, error],
   );
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 }

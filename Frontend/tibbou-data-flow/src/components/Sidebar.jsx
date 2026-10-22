@@ -24,7 +24,7 @@ const baseNavItems = [
   { path: "/costs", label: "Costs", icon: DollarSign },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onNavigate }) {
   const location = useLocation();
   const { organization } = useOrganization();
   const [collapsed, setCollapsed] = useState(false);
@@ -41,8 +41,11 @@ export default function Sidebar() {
   return (
     <aside
       className={cn(
-        "sticky top-0 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
-        collapsed ? "w-[68px]" : "w-[240px]"
+        // Below md it is a slide-out drawer (opened from the top bar's menu
+        // button) so it doesn't squeeze the page; from md up it sits inline.
+        "fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 md:sticky md:top-0 md:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full",
+        collapsed ? "w-[240px] md:w-[68px]" : "w-[240px]"
       )}
     >
       <div className="flex h-16 items-center border-b border-sidebar-border px-4">
@@ -80,6 +83,7 @@ export default function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                 isActive
@@ -107,7 +111,7 @@ export default function Sidebar() {
         ) : null}
       </div>
 
-      <div className="border-t border-sidebar-border p-3">
+      <div className="hidden border-t border-sidebar-border p-3 md:block">
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="flex w-full items-center justify-center rounded-lg py-2 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
