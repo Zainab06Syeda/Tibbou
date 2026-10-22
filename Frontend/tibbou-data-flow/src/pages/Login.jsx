@@ -10,6 +10,8 @@ import { entraOAuthOptions, entraSsoEnabled } from "@/lib/authConfig";
 import { getAuthErrorMessage } from "@/lib/authErrors";
 import { supabase } from "@/lib/supabase";
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function Login() {
   const { configured, loading, session } = useAuth();
   const [mode, setMode] = useState("signIn");
@@ -35,8 +37,12 @@ export default function Login() {
     if (pendingRequest.current) return;
 
     const normalizedEmail = email.trim();
-    if (!normalizedEmail || !password) {
-      setError("Enter both your email address and password.");
+    if (!normalizedEmail || (mode !== "reset" && !password)) {
+      setError(mode === "reset" ? "Enter your email address." : "Enter both your email address and password.");
+      return;
+    }
+    if (!EMAIL_PATTERN.test(normalizedEmail)) {
+      setError("Enter a valid email address.");
       return;
     }
 
@@ -44,6 +50,25 @@ export default function Login() {
     setNotice("");
     pendingRequest.current = true;
     setPending(true);
+
+    if (mode === "reset") {
+      try {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: `${window.location.origin}/auth/reset`,
+        });
+        if (resetError) setError(getAuthErrorMessage(resetError, "send a reset link"));
+        else
+          setNotice(
+            `If an account exists for ${normalizedEmail}, a link to choose a new password is on its way. Open it in this same browser.`
+          );
+      } catch (requestError) {
+        setError(getAuthErrorMessage(requestError, "send a reset link"));
+      } finally {
+        pendingRequest.current = false;
+        setPending(false);
+      }
+      return;
+    }
 
     const action = mode === "signIn" ? "sign in" : "create your account";
     try {
@@ -93,12 +118,14 @@ export default function Login() {
 
         <div className="tb-login__form-wrap">
           <h1 className="tb-login__title">
-            {mode === "signIn" ? "Welcome back" : "Create your account"}
+            {mode === "signIn" ? "Welcome back" : mode === "reset" ? "Reset your password" : "Create your account"}
           </h1>
           <p className="tb-login__lede">
             {mode === "signIn"
               ? "Sign in to see where your warehouse spend went this week."
-              : "Set up your account, then create or join a workspace."}
+              : mode === "reset"
+                ? "Enter your email and we'll send you a link to choose a new password."
+                : "Set up your account, then create or join a workspace."}
           </p>
 
           {!configured ? (
@@ -107,6 +134,7 @@ export default function Login() {
             </p>
           ) : (
             <>
+              {mode === "reset" ? null : (
               <div className="tb-mode-switch">
                 <button
                   type="button"
@@ -125,6 +153,7 @@ export default function Login() {
                   Create account
                 </button>
               </div>
+              )}
 
               <form className="tb-login__form" onSubmit={submit} noValidate>
                 <div className="tb-field">
@@ -143,8 +172,16 @@ export default function Login() {
                   />
                 </div>
 
+                {mode === "reset" ? null : (
                 <div className="tb-field">
-                  <label htmlFor="tb-password" className="tb-field__label">Password</label>
+                  <div className="tb-field__row">
+                    <label htmlFor="tb-password" className="tb-field__label">Password</label>
+                    {mode === "signIn" ? (
+                      <button type="button" className="tb-link tb-link--small tb-link-button" onClick={() => selectMode("reset")}>
+                        Forgot password?
+                      </button>
+                    ) : null}
+                  </div>
                   <input
                     id="tb-password"
                     className="tb-field__input"
@@ -158,13 +195,21 @@ export default function Login() {
                     disabled={pending}
                   />
                 </div>
+                )}
 
                 {error ? <p className="tb-login__error" role="alert">{error}</p> : null}
                 {notice ? <p className="tb-login__notice" role="status">{notice}</p> : null}
 
                 <button type="submit" className="tb-btn tb-btn--primary" disabled={pending}>
-                  {pending ? "Please wait…" : mode === "signIn" ? "Sign in" : "Create account"}
+                  {pending ? "Please wait…" : mode === "signIn" ? "Sign in" : mode === "reset" ? "Send reset link" : "Create account"}
                 </button>
+
+                {mode === "reset" ? (
+                  <button type="button" className="tb-link tb-link--small tb-link-button" onClick={() => selectMode("signIn")}>
+                    Back to sign in
+                  </button>
+                ) : (
+                <>
 
                 <div className="tb-divider" aria-hidden="true">
                   <span />
@@ -188,6 +233,8 @@ export default function Login() {
                 <button type="button" className="tb-btn tb-btn--secondary" disabled>
                   Okta — Coming soon
                 </button>
+                </>
+                )}
               </form>
             </>
           )}

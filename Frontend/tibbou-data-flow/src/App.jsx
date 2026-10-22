@@ -14,6 +14,7 @@ import SettingsConnection from "@/pages/SettingsConnection";
 import SettingsMembers from "@/pages/SettingsMembers";
 import AuthCallback from "@/pages/AuthCallback";
 import Login from "@/pages/Login";
+import ResetPassword from "@/pages/ResetPassword";
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/auth/reset" element={<ResetPassword />} />
           <Route element={<ProtectedRoute />}>
             <Route element={<OrganizationProvider><WorkspaceGate /></OrganizationProvider>}>
               <Route element={<Layout />}>

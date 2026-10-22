@@ -33,3 +33,11 @@
   background: rgba(63, 217, 174, 0.12);
   border-radius: 8px;
 }
+
+.tb-link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--tb-font);
+}
