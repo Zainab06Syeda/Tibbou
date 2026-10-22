@@ -3,28 +3,25 @@ import { Outlet } from "react-router-dom";
 
 import { listConnections } from "@/api/tibbou";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { setupInProgressKey } from "@/lib/organizations";
 import { hasPermission } from "@/lib/permissions";
 import Onboarding from "@/pages/Onboarding";
-
-// Connecting Snowflake is skippable from the wizard -- once skipped for an
-// organization, that choice is remembered here so the user isn't dropped
-// back into onboarding on every visit. They can still set up a connection
-// any time from /settings/connection; SetupChecklist nudges them there.
-function skippedKey(organizationId) {
-  return `tibbou.onboardingSkipped.${organizationId}`;
-}
 
 export default function WorkspaceGate() {
   const { organization, loading, error } = useOrganization();
   const [connectionChecked, setConnectionChecked] = useState(false);
   const [hasConnection, setHasConnection] = useState(false);
-  const [skipped, setSkipped] = useState(false);
+  const [, setSetupEnded] = useState(0);
 
   const organizationId = organization?.id;
+  // Read during render (not from an effect) so the step is already decided
+  // on the first render after the new workspace is selected.
+  const settingUp = Boolean(organizationId) && sessionStorage.getItem(setupInProgressKey(organizationId)) === "1";
 
-  useEffect(() => {
-    setSkipped(Boolean(organizationId) && localStorage.getItem(skippedKey(organizationId)) === "true");
-  }, [organizationId]);
+  function endSetup() {
+    if (organizationId) sessionStorage.removeItem(setupInProgressKey(organizationId));
+    setSetupEnded((count) => count + 1);
+  }
 
   useEffect(() => {
     let active = true;
@@ -53,19 +50,20 @@ export default function WorkspaceGate() {
   if (error) {
     return <div className="grid min-h-screen place-items-center text-red-300">{error}</div>;
   }
-  // Only people who can set up a connection are asked to; everyone else in
-  // an org without one goes straight in (SetupChecklist nudges the admins).
+  // The Snowflake step is only shown up front to the person creating the
+  // workspace, in that tab. Everyone else (other members, other devices,
+  // later visits) goes straight in; SetupChecklist offers the connection.
   const canSetUpConnection = hasPermission(organization?.role, "manage_connection");
-  if (organization && (hasConnection || skipped || !canSetUpConnection)) return <Outlet />;
+  if (organization && (hasConnection || !settingUp || !canSetUpConnection)) return <Outlet />;
 
   return (
     <Onboarding
       hasOrganization={Boolean(organization)}
-      onFinish={() => setHasConnection(true)}
-      onSkip={() => {
-        if (organizationId) localStorage.setItem(skippedKey(organizationId), "true");
-        setSkipped(true);
+      onFinish={() => {
+        endSetup();
+        setHasConnection(true);
       }}
+      onSkip={endSetup}
     />
   );
 }

@@ -68,3 +68,10 @@ create user if not exists ${user}
   default_warehouse = ${warehouse};
 grant role ${role} to user ${user};`;
 }
+
+// Set while someone works through onboarding for a workspace they just
+// created in this browser tab. Only then is the Snowflake step shown up
+// front; anyone else lands on the dashboard, where SetupChecklist offers it.
+export function setupInProgressKey(organizationId) {
+  return `tibbou.setupInProgress.${organizationId}`;
+}
