@@ -32,7 +32,6 @@ USER_ID = UUID("10000000-0000-0000-0000-000000000001")
 def query_returning(value):
     query = MagicMock()
     query.filter.return_value.one_or_none.return_value = value
-    query.filter.return_value.with_for_update.return_value.one_or_none.return_value = value
     return query
 
 
@@ -232,14 +231,19 @@ class OrganizationInvitationTests(unittest.TestCase):
         )
         organization_query = MagicMock()
         organization_query.filter.return_value.one.return_value = organization
+        invitation_query = query_returning(invitation)
         db = MagicMock()
         db.query.side_effect = [
-            query_returning(invitation),
+            invitation_query,
             query_returning(None),
             organization_query,
         ]
 
         result = accept_invitation(invitation_id=INVITATION_ID, user=self.user, db=db)
+
+        # FOR UPDATE needs UPDATE privilege, which the runtime role lacks on
+        # invitations; locking the row made every acceptance fail in production.
+        invitation_query.filter.return_value.with_for_update.assert_not_called()
 
         membership = db.add.call_args.args[0]
         self.assertEqual(membership.organization_id, ORGANIZATION_ID)
@@ -252,7 +256,7 @@ class OrganizationInvitationTests(unittest.TestCase):
 
     def test_wrong_email_or_expired_invitation_is_hidden(self):
         db = MagicMock()
-        db.query.return_value.filter.return_value.with_for_update.return_value.one_or_none.return_value = None
+        db.query.return_value.filter.return_value.one_or_none.return_value = None
         with self.assertRaises(HTTPException) as raised:
             accept_invitation(invitation_id=INVITATION_ID, user=self.user, db=db)
         self.assertEqual(raised.exception.status_code, 404)

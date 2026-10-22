@@ -72,7 +72,9 @@ def accept_invitation(
             OrganizationInvitation.email == email,
             OrganizationInvitation.expires_at > func.now(),
         )
-        .with_for_update()
+        # No row lock: SELECT ... FOR UPDATE needs UPDATE privilege, which the
+        # runtime role deliberately lacks on invitations. A concurrent second
+        # accept still fails on the membership primary key.
         .one_or_none()
     )
     if invitation is None:
