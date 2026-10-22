@@ -12,7 +12,14 @@ const STATUS_STYLES = {
   pending: "text-muted-foreground",
   disabled: "text-muted-foreground",
   failing: "text-red-300",
+  invalid: "text-red-300",
 };
+
+// Saved but never validated (or validation failed): the form below picks
+// it up again, with its key, instead of starting over.
+function needsSetup(connection) {
+  return !connection.enabled && connection.status !== "disabled";
+}
 
 export default function SettingsConnection() {
   const { organization } = useOrganization();
@@ -92,8 +99,11 @@ export default function SettingsConnection() {
                       {connection.name}
                       {connection.status === "disabled" ? <span className="ml-2 text-xs text-muted-foreground">(disabled)</span> : null}
                     </td>
-                    <td className={`px-5 py-3 text-sm capitalize ${STATUS_STYLES[connection.status] || "text-emerald-400"}`}>
-                      {connection.status}
+                    <td className={`px-5 py-3 text-sm ${STATUS_STYLES[connection.status] || "text-emerald-400"}`}>
+                      {connection.status === "pending" ? "Setup not finished" : <span className="capitalize">{connection.status}</span>}
+                      {connection.status === "invalid" && connection.validation_error ? (
+                        <p className="mt-1 max-w-xs text-xs text-muted-foreground">{connection.validation_error}</p>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(connection.last_validated_at)}</td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(connection.last_success_at)}</td>
@@ -106,6 +116,15 @@ export default function SettingsConnection() {
                           className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 disabled:opacity-60"
                         >
                           Sync now
+                        </button>
+                      ) : null}
+                      {needsSetup(connection) && !showAddForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddForm(true)}
+                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950"
+                        >
+                          Finish setup
                         </button>
                       ) : null}
                       {connection.status !== "disabled" ? (
@@ -132,7 +151,9 @@ export default function SettingsConnection() {
       <section className="rounded-2xl border border-border bg-card p-5">
         {showAddForm ? (
           <>
-            <h2 className="font-semibold">Add a connection</h2>
+            <h2 className="font-semibold">
+              {connections?.some(needsSetup) ? "Finish setting up your connection" : "Add a connection"}
+            </h2>
             <div className="mt-4">
               <ConnectionForm
                 defaultName={`Snowflake connection ${(connections?.length || 0) + 1}`}
