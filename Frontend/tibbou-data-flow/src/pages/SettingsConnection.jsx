@@ -90,7 +90,7 @@ export default function SettingsConnection() {
                   <tr key={connection.id} className="border-b border-border/60 last:border-0">
                     <td className="px-5 py-3 text-sm">
                       {connection.name}
-                      {!connection.enabled ? <span className="ml-2 text-xs text-muted-foreground">(disabled)</span> : null}
+                      {connection.status === "disabled" ? <span className="ml-2 text-xs text-muted-foreground">(disabled)</span> : null}
                     </td>
                     <td className={`px-5 py-3 text-sm capitalize ${STATUS_STYLES[connection.status] || "text-emerald-400"}`}>
                       {connection.status}

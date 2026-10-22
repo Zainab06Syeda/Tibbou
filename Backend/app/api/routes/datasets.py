@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/organizations/{organization_id}/datasets", ta
 
 @router.get("", response_model=list[DatasetRead])
 def list_datasets(
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=2000),
     access: OrganizationAccess = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> list[DatasetRead]:

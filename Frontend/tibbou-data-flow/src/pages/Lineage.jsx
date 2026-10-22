@@ -8,6 +8,8 @@ import {
   ingestDbtManifest,
 } from "@/api/tibbou";
 import LineageGraph from "@/components/LineageGraph";
+import { useOrganization } from "@/contexts/OrganizationContext";
+import { hasPermission } from "@/lib/permissions";
 
 function formatDate(value) {
   if (!value) {
@@ -18,6 +20,8 @@ function formatDate(value) {
 }
 
 export default function Lineage() {
+  const { organization } = useOrganization();
+  const canUpload = hasPermission(organization?.role, "upload_dbt_manifest");
   const [datasets, setDatasets] = useState([]);
   const [edges, setEdges] = useState([]);
   const [latestDbtIngestion, setLatestDbtIngestion] = useState(null);
@@ -199,6 +203,7 @@ export default function Lineage() {
         </p>
       </div>
 
+      {canUpload ? (
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -265,6 +270,7 @@ export default function Lineage() {
           </div>
         ) : null}
       </section>
+      ) : null}
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

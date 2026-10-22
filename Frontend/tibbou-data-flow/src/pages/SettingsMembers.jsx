@@ -343,7 +343,7 @@ export default function SettingsMembers() {
         <div className="border-b border-border px-5 py-4">
           <h2 className="font-semibold">Organization memberships</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {canManageMembers ? "Change a member's role, transfer ownership, or remove them." : "Read-only membership records for this organization."}
+            {canManageMembers ? "Change a member's role, add another owner, or remove them." : "Read-only membership records for this organization."}
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -351,7 +351,8 @@ export default function SettingsMembers() {
             <thead><tr className="border-b border-border bg-secondary/20"><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Member</th><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Role</th><th className="px-5 py-3 text-left text-xs uppercase text-muted-foreground">Added</th>{canManageMembers ? <th className="px-5 py-3 text-right text-xs uppercase text-muted-foreground">Action</th> : null}</tr></thead>
             <tbody>
               {data.memberships.map((membership) => {
-                const canModify = canManageMembers && (membership.role !== "owner" || isOwner);
+                const canModify =
+                  canManageMembers && membership.user_id !== user?.id && (membership.role !== "owner" || isOwner);
                 const busy = busyId === membership.user_id;
                 return (
                   <tr key={membership.user_id} className="border-b border-border/60 last:border-0">

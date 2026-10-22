@@ -60,7 +60,7 @@ export default function SetupChecklist() {
       done: manifestUploaded,
       label: "Upload your dbt manifest",
       description: "So Tibbou can build lineage and attribute cost to datasets.",
-      to: "/datasets",
+      to: "/lineage",
     },
     {
       done: teamInvited,
