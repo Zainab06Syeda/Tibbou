@@ -3,6 +3,7 @@ import { Layers3, Search } from "lucide-react";
 
 import { getDatasets } from "@/api/tibbou";
 import { ChartCard, RankedBars, TrendArea } from "@/components/charts";
+import CountUp from "@/components/CountUp";
 import { datasetsByGroup, datasetsOverTime, projectLabel } from "@/lib/chartData";
 
 function formatCount(value) {
@@ -133,24 +134,24 @@ export default function Datasets() {
         </select>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <article className="rounded-2xl border border-border bg-card p-5">
+      <section className="motion-stagger grid gap-4 md:grid-cols-3">
+        <article className="motion-lift rounded-2xl border border-border bg-card p-5">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-muted-foreground">Total datasets</p>
             <Layers3 className="h-4 w-4 text-primary" />
           </div>
-          <p className="mt-4 text-3xl font-semibold text-foreground">{datasets.length}</p>
+          <p className="mt-4 text-3xl font-semibold text-foreground"><CountUp value={datasets.length} /></p>
         </article>
 
         {countsBySystem.slice(0, 2).map((item) => (
-          <article key={item.system} className="rounded-2xl border border-border bg-card p-5">
+          <article key={item.system} className="motion-lift rounded-2xl border border-border bg-card p-5">
             <p className="text-sm font-medium text-muted-foreground">{item.system}</p>
-            <p className="mt-4 text-3xl font-semibold text-foreground">{item.count}</p>
+            <p className="mt-4 text-3xl font-semibold text-foreground"><CountUp value={item.count} /></p>
           </article>
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section className="motion-stagger grid gap-4 xl:grid-cols-2">
         <ChartCard
           title="Datasets by dbt project"
           description="How many tracked datasets each project contributes."

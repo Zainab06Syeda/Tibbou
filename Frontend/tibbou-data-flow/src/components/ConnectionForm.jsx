@@ -7,7 +7,37 @@ import {
   updateConnection,
   validateConnection,
 } from "@/api/tibbou";
+import ConnectionDiagram from "@/components/ConnectionDiagram";
 import { leastPrivilegeSql } from "@/lib/organizations";
+import { cn } from "@/lib/utils";
+
+const STEPS = ["Prepare Snowflake", "Connection details", "Register key"];
+
+function StepTracker({ done }) {
+  return (
+    <ol className="relative grid grid-cols-3 text-center text-[11px]">
+      <span className="absolute left-[16.66%] right-[16.66%] top-2.5 h-0.5 rounded-full bg-border" aria-hidden="true" />
+      <span
+        className="absolute left-[16.66%] top-2.5 h-0.5 rounded-full bg-primary transition-all duration-700 ease-out"
+        style={{ width: `${(Math.max(0, done - 1) / 2) * 66.67}%` }}
+        aria-hidden="true"
+      />
+      {STEPS.map((label, index) => (
+        <li key={label} className="relative flex flex-col items-center gap-1.5">
+          <span
+            className={cn(
+              "grid h-5 w-5 place-items-center rounded-full border text-[10px] font-semibold transition-colors duration-500",
+              index < done ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground"
+            )}
+          >
+            {index + 1}
+          </span>
+          <span className={index < done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 function CopyBlock({ code }) {
   const [copied, setCopied] = useState(false);
@@ -56,6 +86,8 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
   const [editing, setEditing] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // idle -> ready (key generated) -> connecting -> connected | failed
+  const [linkState, setLinkState] = useState("idle");
 
   // Resume a connection whose key was generated but never validated, so
   // reloading midway doesn't strand it (or trip the unique-name rule).
@@ -73,6 +105,7 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
           warehouse_name: pending.warehouse_name,
         });
         setEditing(false);
+        setLinkState(pending.status === "invalid" ? "failed" : "ready");
       })
       .catch(() => {});
     return () => {
@@ -107,6 +140,7 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
           });
       setConnection(saved);
       setEditing(false);
+      setLinkState("ready");
     } catch (requestError) {
       setError(requestError.message || "Could not save the connection.");
     } finally {
@@ -117,12 +151,17 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
   async function validate() {
     setBusy(true);
     setError("");
+    setLinkState("connecting");
     try {
       const validated = await validateConnection(connection.id);
       // Queue the first data pull right away; the worker picks it up.
       syncSnowflake(validated.id).catch(() => {});
+      setLinkState("connected");
+      // Let the "Connected" state show for a moment before moving on.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       onSaved(validated);
     } catch (requestError) {
+      setLinkState("failed");
       setError(requestError.message || "Validation failed.");
     } finally {
       setBusy(false);
@@ -133,6 +172,11 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
 
   return (
     <div className="space-y-4">
+      <div className="space-y-4 rounded-lg border border-border bg-background p-4">
+        <ConnectionDiagram state={linkState} />
+        <StepTracker done={linkState === "connected" ? 3 : connection && !editing ? 2 : 0} />
+      </div>
+
       <details className="rounded-lg border border-border bg-background p-4 text-sm" open={!connection}>
         <summary className="cursor-pointer font-medium">1. Prepare Snowflake</summary>
         <p className="mt-2 text-xs text-muted-foreground">
@@ -196,7 +240,7 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
       </div>
 
       {connection && !editing ? (
-        <div className="rounded-lg border border-border bg-background p-4 text-sm">
+        <div className="rounded-lg border border-border bg-background p-4 text-sm duration-500 animate-in fade-in slide-in-from-bottom-2">
           <p className="font-medium">3. Give Snowflake Tibbou's key</p>
           <p className="mt-2 text-xs text-muted-foreground">
             Tibbou generated a key for this connection and stored the private half securely — you never
@@ -210,12 +254,12 @@ export default function ConnectionForm({ onSaved, defaultName = "Primary Snowfla
             disabled={busy}
             className="mt-4 rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {busy ? "Validating…" : "Validate connection"}
+            {linkState === "connected" ? "Connected" : busy ? "Validating…" : "Validate connection"}
           </button>
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {error ? <p className="text-sm text-red-300 duration-300 animate-in fade-in slide-in-from-top-1">{error}</p> : null}
     </div>
   );
 }

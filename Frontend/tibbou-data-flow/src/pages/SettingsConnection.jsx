@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { disableConnection, listConnections, syncSnowflake } from "@/api/tibbou";
 import ConnectionForm from "@/components/ConnectionForm";
@@ -71,8 +72,8 @@ export default function SettingsConnection() {
         </p>
       </div>
 
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
-      {notice ? <p className="text-sm text-emerald-300">{notice}</p> : null}
+      {error ? <p key={error} className="text-sm text-red-300 duration-300 animate-in fade-in slide-in-from-top-1">{error}</p> : null}
+      {notice ? <p key={notice} className="text-sm text-emerald-300 duration-300 animate-in fade-in slide-in-from-top-1">{notice}</p> : null}
 
       <section className="rounded-2xl border border-border bg-card">
         <div className="border-b border-border px-5 py-4">
@@ -89,18 +90,24 @@ export default function SettingsConnection() {
                 <th className="px-5 py-3" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="motion-stagger">
               {connections === null ? (
                 <tr><td colSpan={5} className="px-5 py-4 text-sm text-muted-foreground">Loading…</td></tr>
               ) : connections.length ? (
                 connections.map((connection) => (
-                  <tr key={connection.id} className="border-b border-border/60 last:border-0">
+                  <tr
+                    key={connection.id}
+                    className="border-b border-border/60 transition-colors duration-200 last:border-0 hover:bg-secondary/10"
+                  >
                     <td className="px-5 py-3 text-sm">
                       {connection.name}
                       {connection.status === "disabled" ? <span className="ml-2 text-xs text-muted-foreground">(disabled)</span> : null}
                     </td>
                     <td className={`px-5 py-3 text-sm ${STATUS_STYLES[connection.status] || "text-emerald-400"}`}>
-                      {connection.status === "pending" ? "Setup not finished" : <span className="capitalize">{connection.status}</span>}
+                      <span className="inline-flex items-center gap-2">
+                        {connection.enabled ? <span className="live-dot" aria-hidden="true" /> : null}
+                        {connection.status === "pending" ? "Setup not finished" : <span className="capitalize">{connection.status}</span>}
+                      </span>
                       {connection.status === "invalid" && connection.validation_error ? (
                         <p className="mt-1 max-w-xs text-xs text-muted-foreground">{connection.validation_error}</p>
                       ) : null}
@@ -113,16 +120,17 @@ export default function SettingsConnection() {
                           type="button"
                           disabled={busyId === connection.id}
                           onClick={() => act(connection, "sync")}
-                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 disabled:opacity-60"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 transition-transform active:scale-95 disabled:opacity-60"
                         >
-                          Sync now
+                          <RefreshCw className={`h-3 w-3 ${busyId === connection.id ? "motion-safe:animate-spin" : ""}`} />
+                          {busyId === connection.id ? "Queuing…" : "Sync now"}
                         </button>
                       ) : null}
                       {needsSetup(connection) && !showAddForm ? (
                         <button
                           type="button"
                           onClick={() => setShowAddForm(true)}
-                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950"
+                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 transition-transform active:scale-95"
                         >
                           Finish setup
                         </button>
@@ -150,7 +158,7 @@ export default function SettingsConnection() {
 
       <section className="rounded-2xl border border-border bg-card p-5">
         {showAddForm ? (
-          <>
+          <div className="duration-300 animate-in fade-in slide-in-from-top-2">
             <h2 className="font-semibold">
               {connections?.some(needsSetup) ? "Finish setting up your connection" : "Add a connection"}
             </h2>
@@ -170,7 +178,7 @@ export default function SettingsConnection() {
             >
               Cancel
             </button>
-          </>
+          </div>
         ) : (
           <button
             type="button"

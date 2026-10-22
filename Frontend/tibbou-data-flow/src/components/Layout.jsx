@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 
 import { useOrganization } from "@/contexts/OrganizationContext";
 
@@ -9,6 +9,7 @@ import TopBar from "./TopBar";
 
 export default function Layout() {
   const { organization } = useOrganization();
+  const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -26,8 +27,11 @@ export default function Layout() {
         <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col p-4 sm:p-6 lg:p-8">
           <PendingInvitations />
           {/* Keyed by workspace: switching remounts the page so it reloads
-              that workspace's data instead of showing the previous one's. */}
-          <Outlet key={organization?.id} />
+              that workspace's data instead of showing the previous one's.
+              The wrapper is keyed by page too, so each page fades in. */}
+          <div key={pathname} className="motion-page flex flex-1 flex-col">
+            <Outlet key={organization?.id} />
+          </div>
         </div>
       </main>
     </div>

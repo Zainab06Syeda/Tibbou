@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, CheckCircle2, LogOut, Menu, ServerCrash } from "lucide-react";
+import { Activity, LogOut, Menu, ServerCrash } from "lucide-react";
 
 import { getHealth, listConnections } from "@/api/tibbou";
 import { useAuth } from "@/contexts/AuthContext";
@@ -65,7 +65,7 @@ export default function TopBar({ onMenu }) {
           {organizations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
         <div className={`hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:flex ${tone}`}>
-          {status.state === "healthy" ? <CheckCircle2 className="h-3.5 w-3.5" /> : status.state === "error" ? <ServerCrash className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}
+          {status.state === "healthy" ? <span className="live-dot mx-0.5" aria-hidden="true" /> : status.state === "error" ? <ServerCrash className="h-3.5 w-3.5" /> : <Activity className="h-3.5 w-3.5" />}
           <span>{status.message}</span>
         </div>
         <button className="rounded-md border border-border p-2 text-muted-foreground hover:text-foreground" onClick={signOut} aria-label="Sign out" title="Sign out">

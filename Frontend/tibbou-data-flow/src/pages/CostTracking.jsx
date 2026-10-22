@@ -7,6 +7,7 @@ import {
   getLatestSnowflakeDatasetCreditSummaries,
 } from "@/api/tibbou";
 import { ChartCard, Donut, RankedBars, StackedBars } from "@/components/charts";
+import CountUp from "@/components/CountUp";
 import { costByDataset as totalCostByDataset, costByProject, costOverTime, creditsByDataset } from "@/lib/chartData";
 
 function formatCurrency(value) {
@@ -156,11 +157,12 @@ export default function CostTracking() {
         </p>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="motion-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: "Total recorded cost",
-            value: formatCurrency(summary.totalCost),
+            value: summary.totalCost,
+            format: formatCurrency,
             icon: Wallet,
           },
           {
@@ -175,23 +177,24 @@ export default function CostTracking() {
           },
           {
             label: "Snowflake credits (latest sync)",
-            value: formatCredits(totalCredits),
+            value: totalCredits,
+            format: formatCredits,
             icon: Gauge,
           },
         ].map((card) => (
-          <article key={card.label} className="rounded-2xl border border-border bg-card p-5">
+          <article key={card.label} className="motion-lift rounded-2xl border border-border bg-card p-5">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-muted-foreground">{card.label}</p>
               <card.icon className="h-4 w-4 text-primary" />
             </div>
             <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
-              {card.value}
+            <CountUp value={card.value} format={card.format} />
             </p>
           </article>
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)]">
+      <section className="motion-stagger grid gap-4 xl:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)]">
         <ChartCard
           title="Cost over time"
           description={`Recorded cost per ${timeline.granularity}, split by the datasets that cost the most.`}
@@ -212,7 +215,7 @@ export default function CostTracking() {
         </ChartCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section className="motion-stagger grid gap-4 xl:grid-cols-2">
         <ChartCard
           title="Highest-cost datasets"
           description="Total recorded cost for each dataset."

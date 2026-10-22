@@ -3,6 +3,7 @@ import { Database, DollarSign, GitBranch, Radio } from "lucide-react";
 
 import { getDashboardData } from "@/api/tibbou";
 import { ChartCard, Donut, TrendArea } from "@/components/charts";
+import CountUp from "@/components/CountUp";
 import SetupChecklist from "@/components/SetupChecklist";
 import { costOverTime, datasetsByGroup, projectLabel } from "@/lib/chartData";
 
@@ -133,7 +134,7 @@ export default function Dashboard() {
 
       <SetupChecklist />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="motion-stagger grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: "Datasets",
@@ -155,28 +156,29 @@ export default function Dashboard() {
           },
           {
             label: "Recorded cost",
-            value: formatCurrency(summary.totalCost),
+            value: summary.totalCost,
+            format: formatCurrency,
             note: "Total across saved snapshots",
             icon: Radio,
           },
         ].map((card) => (
           <article
             key={card.label}
-            className="rounded-2xl border border-border bg-card/90 p-5 shadow-lg shadow-black/10"
+            className="motion-lift rounded-2xl border border-border bg-card/90 p-5 shadow-lg shadow-black/10"
           >
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-muted-foreground">{card.label}</p>
               <card.icon className="h-4 w-4 text-primary" />
             </div>
             <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
-              {card.value}
+            <CountUp value={card.value} format={card.format} />
             </p>
             <p className="mt-2 text-xs text-muted-foreground">{card.note}</p>
           </article>
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
+      <section className="motion-stagger grid gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
         <article className="rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div>
@@ -243,7 +245,7 @@ export default function Dashboard() {
         </ChartCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
+      <section className="motion-stagger grid gap-4 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
         <ChartCard
           title="Cost trend"
           description={`Total recorded cost per ${costTrend.granularity}.`}
