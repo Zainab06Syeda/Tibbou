@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, Path, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWKClientConnectionError
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -116,16 +116,48 @@ def get_current_user(
     return CurrentUser(id=user_id, email=claims.get("email"), session_id=session_id)
 
 
+# Row-level security reads who is asking from these transaction-local
+# settings. A commit ends the transaction and clears them, so anything a route
+# reads afterwards (db.refresh, or the expired object being serialized) was
+# invisible to RLS and failed. Remember them on the session and re-apply them
+# at the start of every transaction instead.
+_REQUEST_CONTEXT = "tibbou_request_context"
+
+
+def _apply_request_context(connection, settings: dict[str, str]) -> None:
+    names = sorted(settings)
+    connection.execute(
+        text("select " + ", ".join(f"set_config(:name_{i}, :value_{i}, true)" for i in range(len(names)))),
+        {
+            **{f"name_{i}": name for i, name in enumerate(names)},
+            **{f"value_{i}": settings[name] for i, name in enumerate(names)},
+        },
+    )
+
+
+@event.listens_for(Session, "after_begin")
+def _reapply_request_context(session, transaction, connection) -> None:
+    settings = session.info.get(_REQUEST_CONTEXT)
+    if settings:
+        _apply_request_context(connection, settings)
+
+
+def _remember_request_context(db: Session, **settings: str) -> None:
+    db.info.setdefault(_REQUEST_CONTEXT, {}).update(settings)
+    _apply_request_context(db, settings)
+
+
 def set_request_user_context(
     db: Session, user_id: UUID, email: str | None = None
 ) -> None:
-    db.execute(
-        text(
-            "select set_config('app.current_user_id', :user_id, true), "
-            "set_config('app.current_user_email', :email, true)"
-        ),
-        {"user_id": str(user_id), "email": normalize_email(email)},
+    _remember_request_context(
+        db,
+        **{"app.current_user_id": str(user_id), "app.current_user_email": normalize_email(email)},
     )
+
+
+def set_request_organization_context(db: Session, organization_id: UUID) -> None:
+    _remember_request_context(db, **{"app.current_organization_id": str(organization_id)})
 
 
 def normalize_email(email: str | None) -> str:
@@ -156,10 +188,7 @@ def require_organization_role(*allowed_roles: str):
         if membership.role not in allowed_roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
 
-        db.execute(
-            text("select set_config('app.current_organization_id', :organization_id, true)"),
-            {"organization_id": str(organization_id)},
-        )
+        set_request_organization_context(db, organization_id)
         return OrganizationAccess(
             organization_id=organization_id, user=user, role=membership.role
         )
