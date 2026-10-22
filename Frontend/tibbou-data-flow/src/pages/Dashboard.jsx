@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Database, DollarSign, GitBranch, Radio } from "lucide-react";
 
 import { getDashboardData } from "@/api/tibbou";
+import { ChartCard, Donut, TrendArea } from "@/components/charts";
 import SetupChecklist from "@/components/SetupChecklist";
+import { costOverTime, datasetsByGroup, projectLabel } from "@/lib/chartData";
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -10,6 +12,19 @@ function formatCurrency(value) {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatCompactCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatCount(value) {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function formatDate(value) {
@@ -96,12 +111,8 @@ export default function Dashboard() {
 
   const recentCosts = dashboard.costs.slice(0, 5);
   const recentDatasets = dashboard.datasets.slice(0, 6);
-  const systems = Object.entries(
-    dashboard.datasets.reduce((accumulator, dataset) => {
-      accumulator[dataset.system] = (accumulator[dataset.system] || 0) + 1;
-      return accumulator;
-    }, {})
-  );
+  const datasetsByProject = datasetsByGroup(dashboard.datasets, projectLabel);
+  const costTrend = costOverTime(dashboard.costs, datasetsById, 0);
 
   return (
     <div className="w-full space-y-6">
@@ -165,7 +176,7 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.2fr,0.8fr]">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
         <article className="rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div>
@@ -221,48 +232,27 @@ export default function Dashboard() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-border bg-card p-5">
-          <h2 className="text-sm font-semibold text-foreground">Connected data flows</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Tibbou can bring in metadata and warehouse activity to keep this view current.
-          </p>
-          <div className="mt-4 space-y-3">
-            {[
-              {
-                title: "dbt metadata refresh",
-                note: "Loads models and dependencies from your dbt project.",
-              },
-              {
-                title: "Snowflake activity sync",
-                note: "Brings in recent query activity and staged warehouse credit signals.",
-              },
-            ].map((item) => (
-              <div key={item.title} className="rounded-xl border border-border bg-secondary/20 p-4">
-                <p className="text-sm font-medium text-foreground">{item.title}</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.note}</p>
-              </div>
-            ))}
-          </div>
-        </article>
+        <ChartCard
+          title="Datasets by dbt project"
+          description="Where the tracked datasets come from."
+          isEmpty={datasetsByProject.length === 0}
+          emptyText="No datasets yet. Upload a dbt manifest on the Lineage page to add some."
+          responsive={false}
+        >
+          <Donut data={datasetsByProject} valueFormatter={formatCount} centerLabel="datasets" />
+        </ChartCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[0.9fr,1.1fr]">
-        <article className="rounded-2xl border border-border bg-card p-5">
-          <h2 className="text-sm font-semibold text-foreground">System coverage</h2>
-          <div className="mt-4 space-y-3">
-            {systems.map(([system, count]) => (
-              <div key={system} className="rounded-xl border border-border bg-secondary/20 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-foreground">{system}</p>
-                  <p className="text-sm text-primary">{count}</p>
-                </div>
-              </div>
-            ))}
-            {dashboard.datasets.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No systems recorded yet.</p>
-            ) : null}
-          </div>
-        </article>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
+        <ChartCard
+          title="Cost trend"
+          description={`Total recorded cost per ${costTrend.granularity}.`}
+          isEmpty={costTrend.rows.length === 0}
+          emptyText="No costs recorded yet."
+          height={240}
+        >
+          <TrendArea data={costTrend.rows} dataKey="total" name="Cost" valueFormatter={formatCompactCurrency} />
+        </ChartCard>
 
         <article className="rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">

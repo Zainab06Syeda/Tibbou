@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Layers3, Search } from "lucide-react";
 
 import { getDatasets } from "@/api/tibbou";
+import { ChartCard, RankedBars, TrendArea } from "@/components/charts";
+import { datasetsByGroup, datasetsOverTime, projectLabel } from "@/lib/chartData";
+
+function formatCount(value) {
+  return new Intl.NumberFormat("en-US").format(value);
+}
 
 function formatDate(value) {
   if (!value) {
@@ -70,6 +76,12 @@ export default function Datasets() {
     }));
   }, [datasets, systems]);
 
+  const byProject = useMemo(
+    () => datasetsByGroup(datasets, projectLabel, 8).map((item) => ({ project: item.label, count: item.value })),
+    [datasets]
+  );
+  const growth = useMemo(() => datasetsOverTime(datasets), [datasets]);
+
   if (loading) {
     return (
       <div className="flex min-h-[320px] items-center justify-center">
@@ -136,6 +148,33 @@ export default function Datasets() {
             <p className="mt-4 text-3xl font-semibold text-foreground">{item.count}</p>
           </article>
         ))}
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ChartCard
+          title="Datasets by dbt project"
+          description="How many tracked datasets each project contributes."
+          isEmpty={byProject.length === 0}
+          emptyText="No datasets yet. Upload a dbt manifest on the Lineage page to add some."
+          height={Math.max(220, byProject.length * 36)}
+        >
+          <RankedBars
+            data={byProject}
+            labelKey="project"
+            bars={[{ key: "count", label: "Datasets" }]}
+            valueFormatter={formatCount}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Datasets tracked over time"
+          description="Running total of datasets as they were added."
+          isEmpty={growth.length === 0}
+          emptyText="No datasets yet."
+          height={Math.max(220, byProject.length * 36)}
+        >
+          <TrendArea data={growth} dataKey="total" name="Datasets" valueFormatter={formatCount} />
+        </ChartCard>
       </section>
 
       <section className="rounded-2xl border border-border bg-card">

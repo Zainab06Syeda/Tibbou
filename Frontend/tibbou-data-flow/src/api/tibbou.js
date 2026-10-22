@@ -143,7 +143,7 @@ export function getLineageEdges() {
 }
 
 export function getCostSnapshots() {
-  return apiRequest(organizationPath("/costs"));
+  return apiRequest(organizationPath("/costs?limit=2000"));
 }
 
 export function listConnections() {

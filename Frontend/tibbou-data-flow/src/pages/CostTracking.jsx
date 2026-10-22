@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { DollarSign, Layers3, Wallet } from "lucide-react";
+import { DollarSign, Gauge, Layers3, Wallet } from "lucide-react";
 
 import {
   getCostSnapshots,
   getDatasets,
   getLatestSnowflakeDatasetCreditSummaries,
 } from "@/api/tibbou";
+import { ChartCard, Donut, RankedBars, StackedBars } from "@/components/charts";
+import { costByDataset as totalCostByDataset, costByProject, costOverTime, creditsByDataset } from "@/lib/chartData";
 
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
@@ -13,6 +15,19 @@ function formatCurrency(value) {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatCompactCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatCompactCredits(value) {
+  return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
 }
 
 function formatDate(value) {
@@ -86,7 +101,10 @@ export default function CostTracking() {
     };
   }, []);
 
-  const datasetById = Object.fromEntries(datasets.map((dataset) => [dataset.id, dataset]));
+  const datasetById = useMemo(
+    () => Object.fromEntries(datasets.map((dataset) => [dataset.id, dataset])),
+    [datasets]
+  );
 
   const summary = useMemo(() => {
     const totalCost = snapshots.reduce(
@@ -101,23 +119,14 @@ export default function CostTracking() {
     };
   }, [snapshots]);
 
-  const costByDataset = useMemo(() => {
-    const totals = new Map();
-
-    snapshots.forEach((snapshot) => {
-      const current = totals.get(snapshot.dataset_id) || 0;
-      totals.set(snapshot.dataset_id, current + Number(snapshot.cost_amount || 0));
-    });
-
-    return [...totals.entries()]
-      .map(([datasetId, total]) => ({
-        datasetId,
-        datasetName: datasetById[datasetId]?.name || datasetId,
-        system: datasetById[datasetId]?.system || "unknown",
-        total,
-      }))
-      .sort((left, right) => right.total - left.total);
-  }, [datasetById, snapshots]);
+  const costByDataset = useMemo(() => totalCostByDataset(snapshots, datasetById), [datasetById, snapshots]);
+  const timeline = useMemo(() => costOverTime(snapshots, datasetById), [datasetById, snapshots]);
+  const projectShare = useMemo(() => costByProject(snapshots, datasetById), [datasetById, snapshots]);
+  const credits = useMemo(
+    () => creditsByDataset(latestSnowflakeSummary?.dataset_credit_summaries || []),
+    [latestSnowflakeSummary]
+  );
+  const totalCredits = credits.reduce((sum, row) => sum + row.total, 0);
 
   const stagedSummary = latestSnowflakeSummary?.dataset_credit_summaries || [];
 
@@ -147,7 +156,7 @@ export default function CostTracking() {
         </p>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {
             label: "Total recorded cost",
@@ -165,9 +174,9 @@ export default function CostTracking() {
             icon: DollarSign,
           },
           {
-            label: "Staged credit summaries",
-            value: latestSnowflakeSummary?.dataset_credit_summary_count || 0,
-            icon: Layers3,
+            label: "Snowflake credits (latest sync)",
+            value: formatCredits(totalCredits),
+            icon: Gauge,
           },
         ].map((card) => (
           <article key={card.label} className="rounded-2xl border border-border bg-card p-5">
@@ -182,55 +191,75 @@ export default function CostTracking() {
         ))}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[0.85fr,1.15fr]">
-        <article className="rounded-2xl border border-border bg-card p-5">
-          <h2 className="text-sm font-semibold text-foreground">Highest-cost datasets</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Totals based on the stored cost records for each dataset.
-          </p>
-          <div className="mt-4 space-y-3">
-            {costByDataset.length > 0 ? (
-              costByDataset.slice(0, 8).map((item) => {
-                const maxValue = costByDataset[0]?.total || 1;
-                const width = `${Math.max((item.total / maxValue) * 100, 6)}%`;
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)]">
+        <ChartCard
+          title="Cost over time"
+          description={`Recorded cost per ${timeline.granularity}, split by the datasets that cost the most.`}
+          isEmpty={timeline.rows.length === 0}
+          emptyText="No costs recorded yet. Cost history will appear here once records are added."
+        >
+          <StackedBars data={timeline.rows} series={timeline.series} valueFormatter={formatCompactCurrency} />
+        </ChartCard>
 
-                return (
-                  <div key={item.datasetId} className="space-y-2 rounded-xl border border-border bg-secondary/20 p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{item.datasetName}</p>
-                        <p className="text-xs text-muted-foreground">{item.system}</p>
-                      </div>
-                      <p className="text-sm font-medium text-primary">
-                        {formatCurrency(item.total)}
-                      </p>
-                    </div>
-                    <div className="h-2 rounded-full bg-background/70">
-                      <div
-                        className="h-2 rounded-full bg-primary"
-                        style={{ width }}
-                      />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <p className="text-sm text-muted-foreground">No costs recorded yet.</p>
-            )}
-          </div>
-        </article>
+        <ChartCard
+          title="Cost by dbt project"
+          description="Share of recorded cost for each project the datasets belong to."
+          isEmpty={projectShare.length === 0}
+          emptyText="No costs recorded yet."
+          responsive={false}
+        >
+          <Donut data={projectShare} valueFormatter={formatCurrency} centerLabel="total cost" />
+        </ChartCard>
+      </section>
 
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ChartCard
+          title="Highest-cost datasets"
+          description="Total recorded cost for each dataset."
+          isEmpty={costByDataset.length === 0}
+          emptyText="No costs recorded yet."
+          height={Math.max(220, Math.min(costByDataset.length, 8) * 40)}
+        >
+          <RankedBars
+            data={costByDataset.slice(0, 8)}
+            labelKey="datasetName"
+            bars={[{ key: "total", label: "Cost" }]}
+            valueFormatter={formatCompactCurrency}
+          />
+        </ChartCard>
+
+        <ChartCard
+          title="Snowflake credits by dataset"
+          description="Credits from the latest sync, split into compute and query acceleration."
+          isEmpty={credits.length === 0}
+          emptyText="No Snowflake credit data yet. Credits appear here after a Snowflake sync."
+          height={Math.max(220, credits.length * 40)}
+        >
+          <RankedBars
+            data={credits}
+            labelKey="datasetName"
+            bars={[
+              { key: "compute", label: "Compute" },
+              { key: "acceleration", label: "Query acceleration" },
+            ]}
+            valueFormatter={formatCompactCredits}
+            stacked
+          />
+        </ChartCard>
+      </section>
+
+      <section>
         <article className="rounded-2xl border border-border bg-card">
           <div className="border-b border-border px-5 py-4">
             <h2 className="text-sm font-semibold text-foreground">Stored cost snapshots</h2>
             <p className="text-xs text-muted-foreground">
-              Saved cost history for tracked datasets.
+              Saved cost history for tracked datasets, newest first.
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="max-h-[480px] overflow-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-border bg-secondary/20">
+                <tr className="sticky top-0 border-b border-border bg-card">
                   <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Dataset
                   </th>
