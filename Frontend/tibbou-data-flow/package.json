@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
-    "test": "node --test test/authConfig.test.js test/chartData.test.js test/lineageLayout.test.js test/datasetTable.test.js test/members.test.js",
+    "test": "node --test test/authConfig.test.js test/chartData.test.js test/lineageLayout.test.js test/datasetTable.test.js test/members.test.js test/dashboardInsights.test.js",
     "typecheck": "tsc -p ./jsconfig.json --noEmit",
     "preview": "vite preview"
   },
