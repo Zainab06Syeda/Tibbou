@@ -104,8 +104,8 @@ export function StackedBars({ data, series, valueFormatter, xKey = "label", ...s
 }
 
 // Horizontal bars for ranking, with long names truncated on the axis and
-// shown in full in the tooltip.
-export function RankedBars({ data, bars, labelKey, valueFormatter, stacked = false, ...size }) {
+// shown in full in the tooltip. `onBarClick` receives the clicked row.
+export function RankedBars({ data, bars, labelKey, valueFormatter, stacked = false, onBarClick, ...size }) {
   return (
     <BarChart {...size} data={data} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }} accessibilityLayer>
       <CartesianGrid stroke={GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
@@ -134,6 +134,8 @@ export function RankedBars({ data, bars, labelKey, valueFormatter, stacked = fal
           fill={CHART_COLORS[index]}
           radius={!stacked || index === bars.length - 1 ? [0, 4, 4, 0] : 0}
           maxBarSize={22}
+          cursor={onBarClick ? "pointer" : undefined}
+          onClick={onBarClick ? (entry) => onBarClick(entry?.payload ?? entry) : undefined}
         />
       ))}
     </BarChart>

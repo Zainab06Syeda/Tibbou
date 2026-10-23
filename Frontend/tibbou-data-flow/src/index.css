@@ -259,3 +259,15 @@
     transform: none;
   }
 }
+
+/* Charts are keyboard-focusable (Recharts accessibilityLayer); only show
+   the focus ring for keyboard focus, not after a mouse click on a bar. */
+.recharts-wrapper :focus:not(:focus-visible),
+.recharts-surface:focus:not(:focus-visible) {
+  outline: none;
+}
+.recharts-surface:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}

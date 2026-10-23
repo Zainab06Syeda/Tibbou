@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Boxes, ChevronDown, Filter, GitBranch, Search, Upload } from "lucide-react";
 
 import {
@@ -38,7 +39,9 @@ export default function Lineage() {
   const [submittingManifest, setSubmittingManifest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  // The Datasets page links here with ?focus=<dataset name>.
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get("focus") || "");
   const [filterProject, setFilterProject] = useState("all");
   const [costs, setCosts] = useState(null);
 
