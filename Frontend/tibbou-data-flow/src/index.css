@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,7 +5,8 @@
 
 @layer base {
   :root {
-    --font-inter: 'Inter', sans-serif;
+    --font-sans: "Figtree Variable", system-ui, sans-serif;
+    --font-mono: "Source Code Pro", ui-monospace, monospace;
     --background: 222 47% 11%;
     --foreground: 210 40% 98%;
     --card: 220 30% 22%;
@@ -88,7 +88,7 @@
   }
 
   body {
-    @apply bg-background text-foreground font-inter;
+    @apply bg-background text-foreground font-sans;
   }
 }
 
@@ -270,4 +270,11 @@
   outline: 2px solid hsl(var(--primary));
   outline-offset: 2px;
   border-radius: 0.5rem;
+}
+
+/* Supabase-style type: small uppercase labels and table headers are set in
+   the monospace face, everything else in Figtree. */
+.app-shell th,
+.app-shell .uppercase {
+  font-family: var(--font-mono);
 }

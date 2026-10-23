@@ -1,7 +1,8 @@
 /* Tibbou sign-in page.
  * Plain CSS, no framework dependency; every class is prefixed `tb-` so it
  * can sit next to Tailwind without collisions.
- * Fonts: Sora (UI, wordmark) + JetBrains Mono (labels, model names).
+ * Fonts: Figtree (UI) + Source Code Pro (labels, model names); the
+ * wordmark alone stays in Sora.
  * Load them once in index.html. */
 
 /* ------------------------------------------------------------------ tokens */
@@ -29,8 +30,9 @@
   --tb-secondary-bg: var(--tb-white);
   --tb-panel-bg: #0B1118;
 
-  --tb-font: "Sora", system-ui, sans-serif;
-  --tb-mono: "JetBrains Mono", ui-monospace, monospace;
+  --tb-font: "Figtree Variable", system-ui, sans-serif;
+  --tb-mono: "Source Code Pro", ui-monospace, monospace;
+  --tb-wordmark: "Sora", system-ui, sans-serif;
   --tb-radius: 10px;
   --tb-cycle: 7s;
   --tb-ease: cubic-bezier(0.65, 0, 0.35, 1);
@@ -327,7 +329,9 @@
   flex-shrink: 0;
   margin-left: calc(var(--s) * -0.85);
   transform: translateY(calc(var(--s) * 0.25));
-  font: 600 calc(var(--s) * 4) / 1 var(--tb-font);
+  /* --tb-wordmark is only defined on the login page; elsewhere (the
+     sidebar) the declaration is dropped and the word inherits, as before. */
+  font: 600 calc(var(--s) * 4) / 1 var(--tb-wordmark);
   letter-spacing: -0.035em;
   white-space: nowrap;
 }

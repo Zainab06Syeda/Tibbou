@@ -178,8 +178,8 @@ export default function Dashboard() {
         ))}
       </section>
 
-      <section className="motion-stagger grid gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
-        <article className="rounded-2xl border border-border bg-card">
+      <section className="motion-stagger grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
+        <article className="min-w-0 rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold text-foreground">Recent datasets</h2>
@@ -245,7 +245,7 @@ export default function Dashboard() {
         </ChartCard>
       </section>
 
-      <section className="motion-stagger grid gap-4 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
+      <section className="motion-stagger grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
         <ChartCard
           title="Cost trend"
           description={`Total recorded cost per ${costTrend.granularity}.`}
@@ -256,7 +256,7 @@ export default function Dashboard() {
           <TrendArea data={costTrend.rows} dataKey="total" name="Cost" valueFormatter={formatCompactCurrency} />
         </ChartCard>
 
-        <article className="rounded-2xl border border-border bg-card">
+        <article className="min-w-0 rounded-2xl border border-border bg-card">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold text-foreground">Recent cost snapshots</h2>

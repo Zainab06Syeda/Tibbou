@@ -25,7 +25,7 @@ export const CHART_COLORS = [
   "hsl(var(--muted-foreground))",
 ];
 
-const AXIS_TICK = { fill: "hsl(var(--muted-foreground))", fontSize: 12 };
+const AXIS_TICK = { fill: "hsl(var(--muted-foreground))", fontSize: 11, fontFamily: "var(--font-mono)" };
 const GRID_STROKE = "hsl(var(--border))";
 const TOOLTIP_STYLE = {
   backgroundColor: "hsl(var(--popover))",

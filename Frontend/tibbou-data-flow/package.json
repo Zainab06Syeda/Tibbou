@@ -8,11 +8,13 @@
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
-    "test": "node --test test/authConfig.test.js test/chartData.test.js test/lineageLayout.test.js test/datasetTable.test.js",
+    "test": "node --test test/authConfig.test.js test/chartData.test.js test/lineageLayout.test.js test/datasetTable.test.js test/members.test.js",
     "typecheck": "tsc -p ./jsconfig.json --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/figtree": "5.2.10",
+    "@fontsource/source-code-pro": "5.2.7",
     "@supabase/supabase-js": "2.112.1",
     "clsx": "2.1.1",
     "lucide-react": "0.475.0",
