@@ -13,7 +13,17 @@ async function apiRequest(path, options = {}, { publicRequest = false } = {}) {
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const contentType = response.headers.get("content-type") || "";
-  const body = contentType.includes("application/json") ? await response.json() : await response.text();
+  // A 204 (e.g. revoke, remove) has no body even when the server labels it
+  // JSON, so read text first rather than calling response.json().
+  const text = await response.text();
+  let body = text || null;
+  if (text && contentType.includes("application/json")) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
   if (!response.ok) throw new Error(errorMessage(response.status, body));
   return body;
 }
