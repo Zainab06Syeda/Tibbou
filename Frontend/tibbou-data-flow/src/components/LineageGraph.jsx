@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Database, Flag, Maximize2, Minus, Plus, Shuffle, X } from "lucide-react";
 
-import { downstreamOf, layoutLineage, upstreamOf } from "@/lib/lineageLayout";
+import { downstreamOf, edgeKey, edgesThrough, layoutLineage, upstreamOf } from "@/lib/lineageLayout";
 import { cn } from "@/lib/utils";
 
 const roleConfig = {
@@ -120,8 +120,9 @@ export default function LineageGraph({ nodes = [], edges = [], highlightIds = nu
     return {
       upstream: upstreamOf([selectedNode], layout.incoming),
       downstream: downstreamOf([selectedNode], layout.outgoing),
+      edges: edgesThrough(edges, selectedNode),
     };
-  }, [layout, selectedNode]);
+  }, [edges, layout, selectedNode]);
 
   // Zoom while keeping the point under `anchor` (viewport coords) in place.
   const zoomTo = useCallback((nextZoom, anchor) => {
@@ -332,8 +333,9 @@ export default function LineageGraph({ nodes = [], edges = [], highlightIds = nu
               const source = layout.nodes.get(edge.upstream_dataset_id);
               const target = layout.nodes.get(edge.downstream_dataset_id);
               if (!source || !target) return null;
-              const isHighlighted =
-                lineage && isInLineage(edge.upstream_dataset_id) && isInLineage(edge.downstream_dataset_id);
+              // Only relationships on a path through the selection, not every
+              // relationship between two highlighted datasets.
+              const isHighlighted = lineage && lineage.edges.has(edgeKey(edge));
               const isDimmed = lineage && !isHighlighted;
               const path = curvePath(source, target);
               return (

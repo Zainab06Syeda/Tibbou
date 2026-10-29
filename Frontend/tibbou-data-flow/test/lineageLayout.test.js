@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { adjacency, downstreamOf, layoutLineage, lineageClosure, upstreamOf } from "../src/lib/lineageLayout.js";
+import { adjacency, downstreamOf, edgesThrough, layoutLineage, lineageClosure, upstreamOf } from "../src/lib/lineageLayout.js";
 
 function edge(from, to) {
   return { id: `${from}-${to}`, upstream_dataset_id: from, downstream_dataset_id: to };
@@ -74,4 +74,42 @@ test("closure keeps a dataset with everything up and downstream of it", () => {
     "raw_customers",
     "stg_customers",
   ]);
+});
+
+// The sponsor's report: selecting fct_orders also lit up stg_customers ->
+// customer_revenue, which is a real relationship but doesn't go through
+// fct_orders. Mirrors the demo_orders project.
+const demo = [
+  edge("raw_customers", "stg_customers"),
+  edge("raw_orders", "stg_orders"),
+  edge("stg_customers", "fct_orders"),
+  edge("stg_orders", "fct_orders"),
+  edge("fct_orders", "orders_summary"),
+  edge("fct_orders", "customer_revenue"),
+  edge("stg_customers", "customer_revenue"),
+];
+
+test("only relationships on a path through the selection are highlighted", () => {
+  assert.deepEqual([...edgesThrough(demo, "fct_orders")].sort(), [
+    "fct_orders->customer_revenue",
+    "fct_orders->orders_summary",
+    "raw_customers->stg_customers",
+    "raw_orders->stg_orders",
+    "stg_customers->fct_orders",
+    "stg_orders->fct_orders",
+  ]);
+});
+
+test("a dataset's own direct and indirect paths are all kept", () => {
+  assert.deepEqual([...edgesThrough(demo, "stg_customers")].sort(), [
+    "fct_orders->customer_revenue",
+    "fct_orders->orders_summary",
+    "raw_customers->stg_customers",
+    "stg_customers->customer_revenue",
+    "stg_customers->fct_orders",
+  ]);
+});
+
+test("a dataset with no relationships highlights nothing", () => {
+  assert.equal(edgesThrough(demo, "unrelated").size, 0);
 });

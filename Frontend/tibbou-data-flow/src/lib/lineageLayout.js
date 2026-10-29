@@ -43,6 +43,30 @@ export function downstreamOf(ids, outgoing) {
   return walk(ids, outgoing);
 }
 
+export function edgeKey(edge) {
+  return `${edge.upstream_dataset_id}->${edge.downstream_dataset_id}`;
+}
+
+// The relationships that lie on a path through `id`: from something
+// upstream into it, or from it out to something downstream. A relationship
+// between two of its relatives that bypasses `id` (A feeds both B and C,
+// and B also feeds C) is not part of its lineage, even though both ends
+// are highlighted.
+export function edgesThrough(edges, id) {
+  const { incoming, outgoing } = adjacency(edges);
+  const upstream = upstreamOf([id], incoming);
+  const downstream = downstreamOf([id], outgoing);
+  const keys = new Set();
+  for (const edge of edges) {
+    const from = edge.upstream_dataset_id;
+    const to = edge.downstream_dataset_id;
+    const intoSelected = upstream.has(from) && (to === id || upstream.has(to));
+    const outOfSelected = downstream.has(to) && (from === id || downstream.has(from));
+    if (intoSelected || outOfSelected) keys.add(edgeKey(edge));
+  }
+  return keys;
+}
+
 export function lineageClosure(edges, seedIds) {
   const { incoming, outgoing } = adjacency(edges);
   return new Set([...seedIds, ...upstreamOf(seedIds, incoming), ...downstreamOf(seedIds, outgoing)]);
