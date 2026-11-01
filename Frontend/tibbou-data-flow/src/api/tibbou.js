@@ -35,6 +35,10 @@ export function getOrganizations() {
   return apiRequest("/api/v1/organizations");
 }
 
+export function getOrganizationSso(slug, { signal = undefined } = {}) {
+  return apiRequest(`/api/v1/organizations/${encodeURIComponent(slug)}/sso`, { cache: "no-store", signal }, { publicRequest: true });
+}
+
 export function getDomainMatch() {
   return apiRequest("/api/v1/organizations/domain-match");
 }

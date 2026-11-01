@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { createInvitation, deleteInvitation, getAdminDashboard } from "@/api/tibbou";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { entraSsoEnabled } from "@/lib/authConfig";
+import { entraSsoEnabled, oktaSsoEnabled } from "@/lib/authConfig";
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -97,9 +97,9 @@ export default function AdminDashboard() {
           <h2 className="font-semibold">Authentication providers</h2>
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between gap-4"><dt>Email/password</dt><dd className="text-emerald-300">Available fallback</dd></div>
-            <div className="flex justify-between gap-4"><dt>Microsoft Entra</dt><dd>{entraSsoEnabled ? "Enabled" : "Disabled"}</dd></div>
-            <div className="flex justify-between gap-4"><dt>Okta</dt><dd>Deferred</dd></div>
-            <div className="flex justify-between gap-4"><dt>SAML</dt><dd>Deferred</dd></div>
+            <div className="flex justify-between gap-4"><dt>Microsoft Entra</dt><dd>{entraSsoEnabled ? "Login enabled" : "Login disabled"}</dd></div>
+            <div className="flex justify-between gap-4"><dt>Okta</dt><dd>{oktaSsoEnabled ? "Login enabled" : "Login disabled"}</dd></div>
+            <div className="flex justify-between gap-4"><dt>Enterprise SAML</dt><dd>Admin-assisted setup</dd></div>
             <div><dt className="text-muted-foreground">Linked methods</dt><dd>{linkedProviders.length ? linkedProviders.join(", ") : "Unavailable"}</dd></div>
           </dl>
         </article>

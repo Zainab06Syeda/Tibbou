@@ -2,6 +2,10 @@
 
 This page points to the real tests and records what was verified. Executable tests stay with the backend, frontend, or database code that uses them.
 
+October 25, 2026: the [selective login reconciliation record](../Documentation/okta-enterprise-sso.md#selective-login-presentation-reconciliation--october-25-2026) covers the approved branded UI with password recovery deliberately omitted. All 20 frontend tests, type checking, lint and build passed; 10 browser authentication groups, 5 cancellation groups and 44 visual/accessibility checks passed. Backend regression: 220 passed, 0 failed/errors, 13 methods and one fixture class skipped. Browser Auth/API responses were simulated; no hosted SSO, RLS or production-capacity success is claimed. The optional whole-app UI audit retains 9 findings outside the changed login.
+
+October 22, 2026: [Enterprise SSO local implementation evidence and rollout gates](../Documentation/okta-enterprise-sso.md) records the current backend run: 220 passed, 0 failed, 13 database test methods and one fixture class skipped (`233 tests`, `skipped=14` in unittest's summary). All 20 frontend tests, type checking, lint, build, eight browser regression groups and five cancellation groups passed. Three inverted organization-filter mutations were detected without editing production source. The ownership Auth fixture is repaired; real database concurrency/RLS, hosted two-provider SSO and production admission/performance gates remain unverified. The historical results below do not verify those gates.
+
 | Check | Command and location | Result |
 | --- | --- | --- |
 | Backend tests | From `Backend`: `python -m unittest discover -s tests -v` | `Ran 53 tests` and `OK (skipped=6)`. The local database integration tests were skipped before connecting because their required marker and URL were absent. |
@@ -37,3 +41,8 @@ These checks were completed during the SSO organization onboarding review.
 - The isolated local PostgreSQL RLS integration suite passed 10/10.
 
 The previous RLS result is kept as testing history. The current automated result is listed separately above so it is clear which checks were rerun.
+
+
+## Final SSO review corrections
+
+Workspace recovery and the portable browser suite are documented in [the correction record](../Documentation/okta-enterprise-sso.md#final-code-review-corrections). Run the separate browser checks using [their setup instructions](../Frontend/tibbou-data-flow/test/browser/README.md). Final results: 27 browser tests and 20 unit tests passed; type checking, lint and build passed. Backend: 220 passed, 0 failures/errors, 13 methods plus one fixture class skipped. Four intentional browser wiring mutations were detected without changing source. All service fixtures are synthetic; hosted authentication, PostgreSQL/RLS and production-capacity gates remain open.

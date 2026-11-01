@@ -60,6 +60,8 @@ Use the same Supabase project in both environment files. Email confirmation must
 
 Microsoft Entra sign-in is available but disabled by default. After the Azure provider is configured in Supabase, set `VITE_ENABLE_ENTRA_SSO=true` in the frontend environment. Keep the Entra client secret in Entra and Supabase, not in the frontend or Git.
 
+The API also requires `SUPABASE_PUBLISHABLE_KEY` for its authoritative Auth identity lookup on every authenticated request. Customer-specific Enterprise SAML routing and the disabled-by-default Okta form are described in [the SSO implementation and configuration guide](Documentation/okta-enterprise-sso.md). Real SSO and hosted isolation must pass the documented acceptance gates before enablement.
+
 Self-service organization creation is disabled. A trusted operator creates the first organization and owner. Owners and administrators can then invite members by exact email address. Organization membership controls access.
 
 ## Run the application

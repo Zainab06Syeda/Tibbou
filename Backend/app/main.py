@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,6 +19,8 @@ if not 1 <= int(os.getenv("DATABASE_POOL_SIZE", "3")) <= 3 or int(os.getenv("DAT
 
 from app.api.router import api_router
 from app.api.routes.ingestion import max_dbt_manifest_bytes
+from app.auth_identity import create_auth_client
+from app.sso import sso_connections
 
 
 def _is_dbt_manifest_request(request: Request) -> bool:
@@ -29,7 +32,18 @@ def _is_dbt_manifest_request(request: Request) -> bool:
 
 
 def create_app() -> FastAPI:
-    application = FastAPI(title="Tibbou", version="1.0.0")
+    sso_connections()  # Invalid routing must fail startup atomically.
+
+    @asynccontextmanager
+    async def lifespan(application):
+        async with create_auth_client() as client:
+            application.state.auth_client = client
+            try:
+                yield
+            finally:
+                application.state.auth_client = None
+
+    application = FastAPI(title="Tibbou", version="1.0.0", lifespan=lifespan)
 
     @application.middleware("http")
     async def reject_oversized_dbt_manifests(request: Request, call_next):

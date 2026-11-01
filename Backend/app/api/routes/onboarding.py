@@ -11,6 +11,7 @@ from app.auth import (
     CurrentUser,
     OrganizationAccess,
     get_current_user,
+    require_non_sso_user,
     normalize_email,
     set_request_user_context,
 )
@@ -54,6 +55,8 @@ def get_domain_match(
     user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DomainMatchRead:
+    if user.sso_provider_id is not None:
+        return DomainMatchRead(organization=None, allow_domain_join=False, already_requested=False)
     email = _require_email(user)
     set_request_user_context(db, user.id, email)
 
@@ -75,7 +78,7 @@ def get_domain_match(
 @router.post("", response_model=OrganizationRead, status_code=status.HTTP_201_CREATED)
 def create_organization(
     payload: OrganizationCreate,
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_non_sso_user),
     db: Session = Depends(get_db),
 ) -> OrganizationRead:
     email = _require_email(user)
@@ -147,7 +150,7 @@ def create_organization(
     status_code=status.HTTP_201_CREATED,
 )
 def request_join_by_domain(
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_non_sso_user),
     db: Session = Depends(get_db),
 ) -> OrganizationJoinRequestRead:
     email = _require_email(user)

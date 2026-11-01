@@ -5,15 +5,18 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, HTTPException, Path, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from jwt.exceptions import PyJWKClientConnectionError
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.db import get_db
+from app.auth_identity import AuthUnavailable, InvalidIdentity, fetch_auth_user, resolve_identity
 from app.models.organization_memberships import OrganizationMembership
+from app.sso import connection_for_provider
 
 bearer_scheme = HTTPBearer(auto_error=False)
 ALLOWED_JWT_ALGORITHMS = ("RS256", "ES256")
@@ -25,6 +28,8 @@ class CurrentUser:
     id: UUID
     email: str | None
     session_id: UUID | None
+    sso_provider_id: UUID | None = None
+    sso_organization_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -102,20 +107,56 @@ def _decode_access_token(token: str) -> dict:
     return claims
 
 
-def get_current_user(
+async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> CurrentUser:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise _auth_error("Bearer access token required")
 
-    claims = _decode_access_token(credentials.credentials)
+    claims = await run_in_threadpool(_decode_access_token, credentials.credentials)
     try:
         user_id = UUID(claims["sub"])
         session_id = UUID(claims["session_id"]) if claims.get("session_id") else None
     except (KeyError, TypeError, ValueError) as exc:
         raise _auth_error("Access token has invalid identity claims") from exc
 
-    return CurrentUser(id=user_id, email=claims.get("email"), session_id=session_id)
+    try:
+        issuer, _, _ = _supabase_auth_settings()
+        client = getattr(request.app.state, "auth_client", None)
+        if client is None:
+            raise AuthUnavailable()
+        auth_user = await fetch_auth_user(
+            issuer, os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip(),
+            credentials.credentials, client,
+        )
+        identity = resolve_identity(claims, auth_user)
+    except InvalidIdentity as exc:
+        raise _auth_error() from exc
+    except (AuthUnavailable, RuntimeError) as exc:
+        raise _auth_service_error() from exc
+
+    connection = None
+    if identity.sso_provider_id is not None:
+        connection = connection_for_provider(identity.sso_provider_id)
+        if connection is None:
+            raise HTTPException(status_code=403, detail="Organization SSO access is unavailable")
+    return CurrentUser(
+        id=user_id, email=identity.email, session_id=session_id,
+        sso_provider_id=identity.sso_provider_id,
+        sso_organization_id=connection.organization_id if connection else None,
+    )
+
+
+def enforce_sso_organization(user: CurrentUser, organization_id: UUID) -> None:
+    if user.sso_provider_id is not None and user.sso_organization_id != organization_id:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+
+def require_non_sso_user(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+    if user.sso_provider_id is not None:
+        raise HTTPException(status_code=403, detail="Organization SSO access requires an invitation")
+    return user
 
 
 def set_request_user_context(
@@ -144,6 +185,7 @@ def require_organization_role(*allowed_roles: str):
         user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> OrganizationAccess:
+        enforce_sso_organization(user, organization_id)
         set_request_user_context(db, user.id)
         membership = (
             db.query(OrganizationMembership)

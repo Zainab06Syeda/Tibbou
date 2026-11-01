@@ -16,6 +16,7 @@ import "@/components/auth/login.css";
 import "./onboarding.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
+import { isOrganizationSsoUser } from "@/lib/authConfig";
 import { countDbtResources, emailDomain, isFreeEmailDomain, slugPreview } from "@/lib/organizations";
 
 const STEPS = ["organization", "connection", "manifest", "invite", "done"];
@@ -173,6 +174,8 @@ function Shell({ step, title, lede = "", children }) {
 // ---------------------------------------------------------------------------
 function EntryStep({ onOrganizationReady, onCreateNew }) {
   const { invitations, acceptInvitation } = useOrganization();
+  const { user } = useAuth();
+  const ssoUser = isOrganizationSsoUser(user);
   const [domainMatch, setDomainMatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState("");
@@ -180,6 +183,11 @@ function EntryStep({ onOrganizationReady, onCreateNew }) {
   const [requested, setRequested] = useState(false);
 
   useEffect(() => {
+    if (ssoUser) {
+      setDomainMatch(null);
+      setLoading(false);
+      return;
+    }
     let active = true;
     getDomainMatch()
       .then((result) => active && setDomainMatch(result))
@@ -188,7 +196,7 @@ function EntryStep({ onOrganizationReady, onCreateNew }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [ssoUser]);
 
   async function handleRequestToJoin() {
     setBusy(true);
@@ -279,7 +287,11 @@ function EntryStep({ onOrganizationReady, onCreateNew }) {
         {actionError ? <p className="tb-login__error" role="alert">{actionError}</p> : null}
       </div>
 
-      <div className="tb-section-divider">
+      {ssoUser ? (
+        <p className="tb-text-muted" role="status" style={{ marginTop: 24 }}>
+          {invitations.length ? "Accept your invitation to access your organization's workspace." : "Ask your organization administrator to invite this SSO account, then refresh this page."}
+        </p>
+      ) : <div className="tb-section-divider">
         <p className="tb-text-muted">
           {domainMatch?.organization
             ? "Starting something separate from your team's workspace?"
@@ -288,7 +300,7 @@ function EntryStep({ onOrganizationReady, onCreateNew }) {
         <button type="button" onClick={onCreateNew} className="tb-btn tb-btn--secondary" style={{ marginTop: 12 }}>
           Create a new organization
         </button>
-      </div>
+      </div>}
     </Shell>
   );
 }

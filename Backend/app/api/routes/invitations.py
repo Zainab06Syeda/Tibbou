@@ -11,6 +11,7 @@ from app.auth import (
     OrganizationAccess,
     get_current_user,
     normalize_email,
+    enforce_sso_organization,
     set_request_user_context,
 )
 from app.db import get_db
@@ -42,9 +43,14 @@ def list_my_invitations(
             detail="Authenticated account has no email address",
         )
     set_request_user_context(db, user.id, user.email)
-    rows = db.execute(
-        text("select * from private.list_request_user_organization_invitations()")
-    ).mappings()
+    statement = "select * from private.list_request_user_organization_invitations()"
+    if user.sso_organization_id is not None:
+        rows = db.execute(
+            text(statement + " where organization_id = :organization_id"),
+            {"organization_id": user.sso_organization_id},
+        ).mappings()
+    else:
+        rows = db.execute(text(statement)).mappings()
     return [OrganizationInvitationSummaryRead.model_validate(row) for row in rows]
 
 
@@ -70,17 +76,20 @@ def accept_invitation(
         text("select pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
         {"scope": f"tibbou:invitation:{invitation_id}"},
     )
-    invitation = (
+    query = (
         db.query(OrganizationInvitation)
         .filter(
             OrganizationInvitation.id == invitation_id,
             OrganizationInvitation.email == email,
             OrganizationInvitation.expires_at > func.now(),
         )
-        .one_or_none()
     )
+    if user.sso_organization_id is not None:
+        query = query.filter(OrganizationInvitation.organization_id == user.sso_organization_id)
+    invitation = query.one_or_none()
     if invitation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+    enforce_sso_organization(user, invitation.organization_id)
 
     existing = (
         db.query(OrganizationMembership)

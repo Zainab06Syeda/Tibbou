@@ -1,6 +1,7 @@
 from uuid import UUID
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from psycopg2.errors import RaiseException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -23,10 +24,26 @@ from app.schemas.organizations import (
     OrganizationAdminRead,
     OrganizationMembershipRead,
     OrganizationRead,
+    OrganizationSsoRead,
 )
+from app.sso import connection_for_slug
 from app.services.organizations import require_can_modify_member, require_invitable_role
 
 router = APIRouter(prefix="/api/v1/organizations", tags=["organizations"])
+
+
+@router.get("/{organization_slug}/sso", response_model=OrganizationSsoRead)
+def get_organization_sso(
+    organization_slug: str, response: Response, idp: Literal["okta", "entra"] = "okta"
+) -> OrganizationSsoRead:
+    connection = connection_for_slug(organization_slug, idp)
+    if connection is None:
+        raise HTTPException(
+            status_code=404, detail="Organization sign-in is unavailable",
+            headers={"Cache-Control": "no-store"},
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return OrganizationSsoRead(provider_id=connection.provider_id, idp=connection.idp)
 
 
 def _lock_membership_changes(
@@ -77,16 +94,17 @@ def list_organizations(
     user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> list[OrganizationRead]:
     set_request_user_context(db, user.id)
-    rows = (
+    query = (
         db.query(Organization, OrganizationMembership.role)
         .join(
             OrganizationMembership,
             OrganizationMembership.organization_id == Organization.id,
         )
         .filter(OrganizationMembership.user_id == user.id)
-        .order_by(Organization.name, Organization.id)
-        .all()
     )
+    if user.sso_organization_id is not None:
+        query = query.filter(Organization.id == user.sso_organization_id)
+    rows = query.order_by(Organization.name, Organization.id).all()
     return [
         OrganizationRead(
             id=organization.id,

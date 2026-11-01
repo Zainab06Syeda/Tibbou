@@ -1,0 +1,46 @@
+/* Additions to the existing branded shell, scoped to the login page. */
+.tb-login .tb-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 20px;
+  border: 1px solid var(--tb-input-border);
+  border-radius: var(--tb-radius);
+}
+.tb-login .tb-mode-switch__btn {
+  height: 38px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--tb-radius) - 4px);
+  font: 500 14px/1 var(--tb-font);
+  color: var(--tb-text-2);
+  cursor: pointer;
+}
+.tb-login .tb-mode-switch__btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.tb-login .tb-mode-switch__btn--active { background: var(--tb-input-bg); color: var(--tb-text); }
+.tb-login .tb-mode-switch__btn:focus-visible { outline: 2px solid var(--tb-link); outline-offset: 2px; }
+.tb-login .tb-mode-switch__btn:hover:not(:disabled) { background: var(--tb-input-bg); }
+.tb-login .tb-login__providers { display: grid; gap: 20px; }
+.tb-login .tb-divider { margin: 24px 0; }
+.tb-login .tb-login__help { margin: 0; color: var(--tb-text-2); font-size: 12px; line-height: 1.5; }
+.tb-login .tb-login__notice {
+  margin: 16px 0 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--tb-link);
+  background: var(--tb-input-bg);
+  border-radius: 8px;
+}
+.tb-login .tb-login__form-wrap > .tb-login__error { margin-top: 16px; }
+.tb-login .tb-field__input[aria-invalid="true"] { border-color: #FFB4B4; }
+.tb-login .tb-field__input::placeholder, .tb-login .tb-divider em, .tb-login .tb-panel__eyebrow { color: var(--tb-text-2); }
+.tb-login .tb-login__form-wrap, .tb-login .tb-field { min-width: 0; }
+.tb-login .tb-btn { width: 100%; min-height: 54px; height: auto; padding: 12px; }
+.tb-login .tb-login__error, .tb-login .tb-login__notice, .tb-login .tb-login__help { overflow-wrap: anywhere; }
+@media (min-width: 1024px) {
+  .tb-login .tb-login__form-col { padding-block: 112px; }
+}
+@media (max-width: 1023px) {
+  .tb-login .tb-btn { min-height: 52px; }
+}

@@ -40,7 +40,11 @@ export function OrganizationProvider({ children }) {
       setInvitations(pending);
       setError("");
     } catch (requestError) {
-      if (version === refreshVersion.current) setError(requestError.message);
+      if (version === refreshVersion.current) setError(requestError?.status === 403
+        ? "Organization access is unavailable for this account. Contact your administrator or sign out."
+        : requestError?.status === 503
+          ? "Authentication is temporarily unavailable. Try again shortly."
+          : "Unable to load your workspace. Try again or sign out.");
       throw requestError;
     } finally {
       if (version === refreshVersion.current) setLoading(false);

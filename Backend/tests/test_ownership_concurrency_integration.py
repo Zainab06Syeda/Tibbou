@@ -13,10 +13,11 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import jwt
+import httpx
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -31,6 +32,90 @@ from app.auth import CurrentUser, require_organization_role
 from app.db import get_db
 from app.models.organization_memberships import OrganizationMembership
 from app.schemas.organizations import MembershipRoleUpdate
+
+
+def ownership_auth_transport(users, key, issuer, audience):
+    """Synthetic Auth wire response; validate the same signing key and principal as the API."""
+    def get_user(request):
+        if request.method != "GET" or str(request.url) != f"{issuer}/user":
+            raise AssertionError("Unexpected fixture Auth request")
+        try:
+            claims = jwt.decode(request.headers["authorization"].removeprefix("Bearer "),
+                key.public_key(), algorithms=["ES256"], issuer=issuer, audience=audience)
+        except jwt.PyJWTError:
+            return httpx.Response(401)
+        user = next((user for user in users if str(user.id) == claims["sub"]), None)
+        if user is None:
+            return httpx.Response(401)
+        return httpx.Response(200, json={"id": str(user.id), "email": user.email,
+            "identities": [{"user_id": str(user.id), "provider": "email"}]})
+    return httpx.MockTransport(get_user)
+
+
+class OwnershipAuthFixtureTests(unittest.TestCase):
+    """Offline transport/authorization checks; not PostgreSQL ownership/RLS evidence."""
+    def setUp(self):
+        from app.main import app
+        from app.sso import sso_connections
+        self.app = app
+        self.env = patch.dict(os.environ, {"SUPABASE_PUBLISHABLE_KEY": "sb_publishable_ownership_fixture",
+                                          "ENTERPRISE_SSO_CONNECTIONS": "[]"})
+        self.env.start()
+        sso_connections.cache_clear()
+        self.key = ec.generate_private_key(ec.SECP256R1())
+        self.user = CurrentUser(uuid4(), "owner-fixture@example.com", None)
+        self.org = uuid4()
+        self.issuer = "https://example.supabase.co/auth/v1"
+        self.settings = patch("app.auth._supabase_auth_settings", return_value=(self.issuer, "authenticated", "unused"))
+        self.settings.start()
+        self.keys = patch("app.auth._jwk_client")
+        self.keys.start().return_value.get_signing_key_from_jwt.return_value = SimpleNamespace(key=self.key.public_key())
+        self.db = MagicMock()
+        self.db.query.return_value.filter.return_value.one_or_none.return_value = SimpleNamespace(role="viewer")
+        self.app.dependency_overrides[get_db] = lambda: self.db
+        auth_client = httpx.AsyncClient(transport=ownership_auth_transport([self.user], self.key, self.issuer, "authenticated"))
+        self.factory = patch("app.main.create_auth_client", return_value=auth_client)
+        self.factory.start()
+        self.client = TestClient(app)
+        self.client.__enter__()
+
+    def tearDown(self):
+        from app.sso import sso_connections
+        self.client.__exit__(None, None, None)
+        self.app.dependency_overrides.pop(get_db, None)
+        self.factory.stop()
+        self.keys.stop()
+        self.settings.stop()
+        self.env.stop()
+        sso_connections.cache_clear()
+
+    def request(self, *, sub=None, key=None):
+        now = datetime.now(timezone.utc)
+        token = jwt.encode({"sub": str(sub or self.user.id), "role": "authenticated",
+            "iss": self.issuer, "aud": "authenticated", "iat": now, "exp": now + timedelta(minutes=5)},
+            key or self.key, algorithm="ES256", headers={"kid": "ownership-fixture"})
+        return self.client.post(f"/api/v1/organizations/{self.org}/memberships/{uuid4()}/transfer-ownership",
+            headers={"Authorization": "Bearer " + token})
+
+    def test_matching_auth_identity_reaches_actual_role_denial(self):
+        response = self.request()
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(response.json()["detail"], "Insufficient permission")
+        self.db.query.assert_called_once_with(OrganizationMembership)
+        self.db.execute.assert_called_once()
+        self.db.add.assert_not_called()
+        self.db.commit.assert_not_called()
+
+    def test_unknown_fixture_identity_is_rejected_before_membership(self):
+        self.assertEqual(self.request(sub=uuid4()).status_code, 401)
+        self.db.query.assert_not_called()
+
+    def test_invalid_signature_is_not_accepted_by_auth_fixture(self):
+        from app.auth import fetch_auth_user
+        with patch("app.auth.fetch_auth_user", wraps=fetch_auth_user) as lookup:
+            self.assertEqual(self.request(key=ec.generate_private_key(ec.SECP256R1())).status_code, 401)
+            lookup.assert_not_awaited()
+        self.db.query.assert_not_called()
 
 
 @unittest.skipUnless(os.getenv('TIBBOU_OWNERSHIP_LOCAL_TEST') == 'enabled',
@@ -237,7 +322,7 @@ class OwnershipConcurrencyIntegrationTests(unittest.TestCase):
         self.assertNotIn(self.users[1].id, rows)
 
     def test_signed_api_authorization_and_denied_write_preservation(self):
-        # Controlled ES256 signing/JWKS only; real decoder/dependencies/RLS/routes.
+        # Controlled ES256/JWKS and Auth transport; real decoder/dependencies/RLS/routes.
         # This does not claim a native Supabase-issued JWT or deployed HTTP test.
         from app.main import app
         from app.auth import _supabase_auth_settings
@@ -254,8 +339,11 @@ class OwnershipConcurrencyIntegrationTests(unittest.TestCase):
                 yield db
         app.dependency_overrides[get_db] = sessions
         base = f'/api/v1/organizations/{self.org}/memberships/'
+        auth_client = httpx.AsyncClient(transport=ownership_auth_transport(self.users, key, issuer, audience))
         try:
-            with patch('app.auth._jwk_client') as client_keys, TestClient(app) as client:
+            with (patch.dict(os.environ, {"SUPABASE_PUBLISHABLE_KEY": "sb_publishable_ownership_fixture"}),
+                  patch('app.main.create_auth_client', return_value=auth_client),
+                  patch('app.auth._jwk_client') as client_keys, TestClient(app) as client):
                 client_keys.return_value.get_signing_key_from_jwt.return_value = SimpleNamespace(key=key.public_key())
                 cases = [(2, 'post', 4, '/transfer-ownership', None, 403),
                          (2, 'patch', 0, '', {'role':'viewer'}, 403),

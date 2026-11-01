@@ -11,6 +11,8 @@ const AUTH_ERROR_MESSAGES = {
 };
 
 export function getAuthErrorMessage(error, action = "sign in") {
+  if (error?.name === "TimeoutError") return "Organization sign-in took too long. Try again or choose another sign-in method.";
+  if (error?.name === "AbortError") return "Organization sign-in was cancelled. Try again or choose another sign-in method.";
   if (error?.name === "AuthRetryableFetchError" || error instanceof TypeError) {
     return "Unable to reach the authentication service. Check your connection and try again.";
   }

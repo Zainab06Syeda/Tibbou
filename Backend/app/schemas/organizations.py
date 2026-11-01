@@ -16,6 +16,11 @@ class OrganizationRead(BaseModel):
     created_at: datetime
 
 
+class OrganizationSsoRead(BaseModel):
+    provider_id: UUID
+    idp: Literal["okta", "entra"]
+
+
 class OrganizationSummaryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
