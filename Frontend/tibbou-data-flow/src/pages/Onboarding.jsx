@@ -16,7 +16,13 @@ import "@/components/auth/login.css";
 import "./onboarding.css";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrganization } from "@/contexts/OrganizationContext";
-import { countDbtResources, emailDomain, isFreeEmailDomain, slugPreview } from "@/lib/organizations";
+import {
+  countDbtResources,
+  emailDomain,
+  isFreeEmailDomain,
+  setupInProgressKey,
+  slugPreview,
+} from "@/lib/organizations";
 
 const STEPS = ["organization", "connection", "manifest", "invite", "done"];
 
@@ -573,6 +579,7 @@ export default function Onboarding({ hasOrganization, onFinish, onSkip }) {
     return (
       <OrganizationStep
         onCreated={async (created) => {
+          sessionStorage.setItem(setupInProgressKey(created.id), "1");
           await refresh(created.id);
           setStep("connection");
         }}

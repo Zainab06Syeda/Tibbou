@@ -71,3 +71,10 @@ GRANT DATABASE ROLE SNOWFLAKE.USAGE_VIEWER TO ROLE "${role}";
 CREATE USER IF NOT EXISTS "${user}" TYPE = SERVICE DEFAULT_ROLE = "${role}" DEFAULT_WAREHOUSE = "${warehouse}";
 GRANT ROLE "${role}" TO USER "${user}";`;
 }
+
+// Set while someone works through onboarding for a workspace they just
+// created in this browser tab. Only then is the Snowflake step shown up
+// front; anyone else lands on the dashboard, where SetupChecklist offers it.
+export function setupInProgressKey(organizationId) {
+  return `tibbou.setupInProgress.${organizationId}`;
+}

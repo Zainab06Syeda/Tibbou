@@ -14,13 +14,15 @@ router = APIRouter(prefix="/api/v1/organizations/{organization_id}/datasets", ta
 
 @router.get("", response_model=list[DatasetRead])
 def list_datasets(
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=2000),
     access: OrganizationAccess = Depends(require_viewer),
     db: Session = Depends(get_db),
 ) -> list[DatasetRead]:
     datasets = (
         db.query(Dataset)
-        .filter(Dataset.organization_id == access.organization_id)
+        # A newer dbt manifest marks models it no longer contains inactive;
+        # listing them kept old projects on the dashboard indefinitely.
+        .filter(Dataset.organization_id == access.organization_id, Dataset.is_active.is_(True))
         .order_by(Dataset.created_at.desc(), Dataset.id.desc())
         .limit(limit)
         .all()

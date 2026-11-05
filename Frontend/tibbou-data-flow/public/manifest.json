@@ -1,0 +1,11 @@
+{
+  "name": "Tibbou",
+  "short_name": "Tibbou",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1118",
+  "theme_color": "#0B1118",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" }
+  ]
+}

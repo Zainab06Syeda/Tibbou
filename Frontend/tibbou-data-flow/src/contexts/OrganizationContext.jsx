@@ -31,7 +31,9 @@ export function OrganizationProvider({ children }) {
         rows.find((row) => row.id === storedId) ||
         rows[0] ||
         null;
-      const pending = selected ? [] : await getInvitations();
+      // Loaded even for people who already belong to a workspace, so an
+      // invitation to a second one still reaches them.
+      const pending = await getInvitations();
       if (version !== refreshVersion.current) return;
       setOrganizations(rows);
       setOrganization(selected);
@@ -79,7 +81,8 @@ export function OrganizationProvider({ children }) {
 
   const value = useMemo(
     () => ({ organizations, organization, invitations, loading, error, refresh, selectOrganization, acceptInvitation }),
-    [organizations, organization, invitations, loading, error],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the functions only read the state listed here
+    [session, organizations, organization, invitations, loading, error],
   );
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>;
 }

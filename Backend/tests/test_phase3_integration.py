@@ -77,17 +77,12 @@ class Phase3Tests(unittest.TestCase):
             with self.assertRaises(SnowflakeValidationError):
                 registration_sql(connection)
 
-    def test_wrong_identity_fingerprint_key_scope_status_and_expiry(self):
-        for failure in (
-            "role",
-            "warehouse",
-            "fingerprint",
-            "key_name_case",
-            "scope",
-            "disabled",
-            "expired",
-            "expiry",
-        ):
+    def test_wrong_session_identity_is_rejected(self):
+        # Snowflake has no SHOW USER KEY PAIRS, so key fingerprint, scope,
+        # status and expiry can't be inspected; a successful key-pair login
+        # is what proves the registered key matches. The session's role and
+        # warehouse are still checked against the connection.
+        for failure in ("role", "warehouse"):
             cursor = _FakeCursor(
                 "SHA256:wrong" if failure == "fingerprint" else "SHA256:test"
             )
@@ -103,17 +98,6 @@ class Phase3Tests(unittest.TestCase):
                         row[4] = "OTHER_ROLE"
                     if failure == "warehouse":
                         row[5] = "OTHER_WH"
-                    cursor.rows = [tuple(row)]
-                if statement.startswith("show user"):
-                    row = list(cursor.rows[0])
-                    if failure == "scope":
-                        row[2] = "OTHER_ROLE"
-                    if failure == "disabled":
-                        row[3] = "DISABLED"
-                    if failure == "expired":
-                        row[3] = "EXPIRED"
-                    if failure == "expiry":
-                        row[4] = datetime(2020, 1, 1, tzinfo=timezone.utc)
                     cursor.rows = [tuple(row)]
                 return result
 

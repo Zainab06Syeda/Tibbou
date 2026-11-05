@@ -13,13 +13,32 @@ async function apiRequest(path, options = {}, { publicRequest = false } = {}) {
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const contentType = response.headers.get("content-type") || "";
-  const body = contentType.includes("application/json") ? await response.json() : await response.text();
-  if (!response.ok) {
-    const detail = Array.isArray(body?.detail)
-      ? body.detail.map((item) => item.msg).join("; ") : body?.detail;
-    throw Object.assign(new Error(detail || "Request failed. Please try again."), { status: response.status });
+  // A 204 (e.g. revoke, remove) has no body even when the server labels it
+  // JSON, so read text first rather than calling response.json().
+  const text = await response.text();
+  let body = text || null;
+  if (text && contentType.includes("application/json")) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
   }
+  // `status` lets callers tell "not found yet" (404) apart from real failures.
+  if (!response.ok) throw Object.assign(new Error(errorMessage(response.status, body)), { status: response.status });
   return body;
+}
+
+function errorMessage(status, body) {
+  const detail = body?.detail;
+  if (typeof detail === "string" && detail) return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) return detail.map((item) => item.msg).join(" ");
+  if (status === 401) return "Your session has expired. Please sign in again.";
+  if (status === 403) return "You don't have permission to do that.";
+  if (status === 404) return "That item couldn't be found. It may have been removed.";
+  if (status === 413) return "That file is too large.";
+  if (status >= 500) return "Something went wrong on our side. Please try again in a moment.";
+  return "That didn't work. Please try again.";
 }
 function organizationPath(path) {
   const organizationId = localStorage.getItem(ORGANIZATION_STORAGE_KEY);
@@ -123,15 +142,15 @@ export function denyJoinRequest(requestId) {
 }
 
 export function getDatasets() {
-  return apiRequest(organizationPath("/datasets"));
+  return apiRequest(organizationPath("/datasets?limit=2000"));
 }
 
 export function getLineageEdges() {
-  return apiRequest(organizationPath("/lineage"));
+  return apiRequest(organizationPath("/lineage?limit=2000"));
 }
 
 export function getCostSnapshots() {
-  return apiRequest(organizationPath("/costs"));
+  return apiRequest(organizationPath("/costs?limit=2000"));
 }
 
 export function listConnections() {

@@ -68,6 +68,8 @@ class OrganizationMembershipRead(BaseModel):
     user_id: UUID
     role: str
     created_at: datetime
+    email: str | None = None
+    display_name: str | None = None
 
 
 class MembershipRoleUpdate(BaseModel):
