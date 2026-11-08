@@ -90,6 +90,15 @@ class DataRouteScopingTests(unittest.TestCase):
                     organization_id,
                 )
 
+    def test_list_datasets_leaves_out_datasets_a_newer_manifest_retired(self):
+        db = MagicMock()
+        access = OrganizationAccess(ORG_A, MagicMock(), "viewer")
+
+        list_datasets(limit=100, access=access, db=db)
+
+        criteria = [str(criterion) for criterion in db.query.return_value.filter.call_args.args]
+        self.assertTrue(any("is_active IS true" in criterion for criterion in criteria), criteria)
+
     def test_list_lineage_edges_scopes_to_the_callers_organization(self):
         for organization_id in (ORG_A, ORG_B):
             with self.subTest(organization_id=organization_id):

@@ -29,6 +29,7 @@ from app.services.snowflake import (
     _account_matches,
     connection_kwargs,
     generate_key_pair,
+    registration_sql,
     validate_connection,
 )
 
@@ -44,30 +45,15 @@ class _FakeCursor:
         self.access_sqlstate = access_sqlstate
         self.description = []
         self.rows = []
+        self.statements = []
         self.closed = False
 
     def execute(self, statement):
         lowered = statement.lower()
+        self.statements.append(statement)
         if "current_account" in lowered:
             self.rows = [(self.current_account, "TEST", "ACCOUNT", self.current_user,
                           "TIBBOU_ROLE", "TIBBOU_WH")]
-        elif lowered.startswith("show user key pairs"):
-            self.description = [
-                ("NAME",),
-                ("FINGERPRINT",),
-                ("ROLE_SCOPE",),
-                ("STATUS",),
-                ("EXPIRES_AT",),
-            ]
-            self.rows = [
-                (
-                    self.key_name,
-                    self.fingerprint,
-                    "TIBBOU_ROLE",
-                    "ACTIVE",
-                    datetime(2026, 12, 1, tzinfo=timezone.utc),
-                )
-            ]
         elif "access_history" in lowered and not self.access_history:
             raise ProgrammingError(msg="not authorized", sqlstate=self.access_sqlstate)
         return self
@@ -183,6 +169,24 @@ class SnowflakeConnectionTests(unittest.TestCase):
                 )
                 self.assertTrue(cursor.closed)
                 snowflake_connection.close.assert_called_once_with()
+                # SHOW USER KEY PAIRS is not a real Snowflake command.
+                self.assertFalse(any("key pairs" in s.lower() for s in cursor.statements))
+
+    def test_registration_sql_uses_standard_snowflake_syntax(self):
+        connection = _connection()
+        connection.public_key = "MIIBIjANBgkq"
+        self.assertEqual(
+            registration_sql(connection),
+            "ALTER USER \"TIBBOU_USER\" SET RSA_PUBLIC_KEY = 'MIIBIjANBgkq';",
+        )
+
+    def test_failed_sign_in_explains_what_to_check(self):
+        with (
+            patch("app.services.snowflake.connection_kwargs", return_value={}),
+            patch("snowflake.connector.connect", side_effect=Exception("JWT token is invalid")),
+            self.assertRaisesRegex(SnowflakeValidationError, "ALTER USER line"),
+        ):
+            validate_connection(SimpleNamespace(), _connection())
 
     def test_validation_rejects_identity_mismatch_without_leaking_details(self):
         cursor = _FakeCursor("SHA256:test", current_user="OTHER_USER")
@@ -214,9 +218,8 @@ class SnowflakeConnectionTests(unittest.TestCase):
         ):
             validate_connection(SimpleNamespace(), connection)
 
-    def test_validation_rejects_wrong_key_name_and_unrelated_access_error(self):
+    def test_validation_rejects_unrelated_access_error(self):
         for cursor, expected in (
-            (_FakeCursor("SHA256:test", key_name="OTHER_KEY"), "public key is not registered"),
             (_FakeCursor("SHA256:test", access_history=False, access_sqlstate="42000"),
              "capability validation failed"),
         ):

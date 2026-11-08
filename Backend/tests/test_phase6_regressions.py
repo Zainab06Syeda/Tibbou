@@ -107,7 +107,7 @@ class Phase6RegressionTests(unittest.TestCase):
         self.assertNotIn("secret_reference", data)
         self.assertNotIn("private_key", data)
         self.assertNotIn("fixture-ref", response.model_dump_json())
-        self.assertIn("ADD KEY PAIR", response.registration_sql)
+        self.assertIn("SET RSA_PUBLIC_KEY", response.registration_sql)
 
     def test_patch_returns_committed_response_without_post_commit_sql(self):
         guard = self._deny_sql_after_commit()

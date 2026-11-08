@@ -194,7 +194,8 @@ class OrganizationInvitationTests(unittest.TestCase):
         db.execute.return_value.mappings.return_value = []
         self.assertEqual(list_my_invitations(user=self.user, db=db), [])
         params = db.execute.call_args_list[0].args[1]
-        self.assertEqual(params["email"], "invitee@example.com")
+        settings = {params[k]: params["value_" + k[5:]] for k in params if k.startswith("name_")}
+        self.assertEqual(settings["app.current_user_email"], "invitee@example.com")
 
     def test_invitee_summary_contains_only_the_approved_organization_projection(self):
         expires_at = datetime.now(timezone.utc) + timedelta(days=1)
@@ -231,6 +232,7 @@ class OrganizationInvitationTests(unittest.TestCase):
         )
         organization_query = MagicMock()
         organization_query.filter.return_value.one.return_value = organization
+        invitation_query = query_returning(invitation)
         db = MagicMock()
         invitation_query = query_returning(invitation)
         db.query.side_effect = [
@@ -240,6 +242,10 @@ class OrganizationInvitationTests(unittest.TestCase):
         ]
 
         result = accept_invitation(invitation_id=INVITATION_ID, user=self.user, db=db)
+
+        # FOR UPDATE needs UPDATE privilege, which the runtime role lacks on
+        # invitations; locking the row made every acceptance fail in production.
+        invitation_query.filter.return_value.with_for_update.assert_not_called()
 
         membership = db.add.call_args.args[0]
         self.assertEqual(membership.organization_id, ORGANIZATION_ID)

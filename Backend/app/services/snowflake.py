@@ -5,7 +5,7 @@ import os
 import re
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -245,20 +245,12 @@ def iter_usage_pages(
 
 def registration_sql(connection: SnowflakeConnection) -> str:
     _validate_identifiers(connection)
-    def identifier(value: str) -> str:
-        return '"' + value.replace('"', '""') + '"'
-
-    role = connection.role_name.replace("'", "''")
-    return (
-        f"ALTER USER {identifier(connection.user_name)} ADD KEY PAIR "
-        f"{identifier(connection.key_pair_name)} PUBLIC_KEY = '{connection.public_key}' "
-        f"ROLE_RESTRICTION = '{role}' DAYS_TO_EXPIRY = 90 "
-        "COMMENT = 'Tibbou Snowflake connection';"
-    )
-
-
-def _normalized_fingerprint(value: Any) -> str:
-    return str(value or "").removeprefix("SHA256:").strip()
+    # Snowflake has no named/role-restricted key pairs (no ADD KEY PAIR or
+    # SHOW USER KEY PAIRS), so the key goes in the standard slot. The role is
+    # limited instead by the setup SQL granting this user only one role, and
+    # validation refusing any session whose current role differs.
+    user = '"' + connection.user_name.replace('"', '""') + '"'
+    return f"ALTER USER {user} SET RSA_PUBLIC_KEY = '{connection.public_key}';"
 
 
 def _account_matches(configured: str, locator: str, organization: str, account_name: str) -> bool:
@@ -271,11 +263,16 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
     import snowflake.connector
 
     _validate_identifiers(connection)
+    # Key-pair login only succeeds when the public key registered on the user
+    # matches the private key we hold, so connecting proves registration.
     try:
         snowflake_connection = snowflake.connector.connect(**connection_kwargs(db, connection))
         cursor = snowflake_connection.cursor()
     except Exception as exc:
-        raise SnowflakeValidationError("Snowflake authentication failed") from exc
+        raise SnowflakeValidationError(
+            "Snowflake sign-in failed. Check the account identifier and user name, and that "
+            "the ALTER USER line from step 3 was run."
+        ) from exc
 
     try:
         cursor.execute(
@@ -302,31 +299,6 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
             if str(actual[key] or "").upper() != str(expected_value or "").upper():
                 raise SnowflakeValidationError(f"Snowflake {key} does not match the connection")
 
-        cursor.execute("show user key pairs")
-        columns = [column[0].lower() for column in cursor.description]
-        key_pairs = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        matching_key = next(
-            (
-                key
-                for key in key_pairs
-                if str(key.get("name") or "") == connection.key_pair_name
-                and _normalized_fingerprint(key.get("fingerprint"))
-                == _normalized_fingerprint(connection.public_key_fingerprint)
-            ),
-            None,
-        )
-        if matching_key is None:
-            raise SnowflakeValidationError("The generated public key is not registered")
-        if (
-            str(matching_key.get("role_scope") or "").upper()
-            != connection.role_name.upper()
-        ):
-            raise SnowflakeValidationError(
-                "The Snowflake key is not restricted to the configured role"
-            )
-        if str(matching_key.get("status") or "").upper() != "ACTIVE":
-            raise SnowflakeValidationError("The Snowflake key is not active")
-
         try:
             cursor.execute(
                 "select query_id from snowflake.account_usage.query_attribution_history "
@@ -348,9 +320,6 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
                 raise
             access_history = False
 
-        expires_at = matching_key.get("expires_at")
-        if isinstance(expires_at, datetime) and expires_at.replace(tzinfo=expires_at.tzinfo or timezone.utc) <= datetime.now(timezone.utc):
-            raise SnowflakeValidationError("The Snowflake key has expired")
         return ValidationResult(
             capabilities={
                 "authenticated": True,
@@ -361,9 +330,8 @@ def validate_connection(db: Session, connection: SnowflakeConnection) -> Validat
                 "current_user": str(current_user),
                 "current_role": str(current_role),
                 "current_warehouse": str(current_warehouse),
-                "named_key_pair": True,
             },
-            key_expires_at=expires_at if isinstance(expires_at, datetime) else None,
+            key_expires_at=None,
         )
     except SnowflakeValidationError:
         raise

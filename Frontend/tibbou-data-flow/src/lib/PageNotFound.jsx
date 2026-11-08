@@ -1,5 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 
+import TibbouMark from "@/components/auth/TibbouMark";
+
 export default function PageNotFound() {
   const location = useLocation();
   const pageName = location.pathname || "/";
@@ -7,7 +9,10 @@ export default function PageNotFound() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-2xl shadow-black/20">
-        <p className="text-6xl font-semibold tracking-tight text-primary/60">404</p>
+        <div className="flex justify-center">
+          <TibbouMark size={20} theme="dark" forceDot />
+        </div>
+        <p className="mt-5 text-6xl font-semibold tracking-tight text-primary/60">404</p>
         <h1 className="mt-4 text-2xl font-semibold text-foreground">Page not found</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
           <span className="font-medium text-foreground">{pageName}</span> is not available in this

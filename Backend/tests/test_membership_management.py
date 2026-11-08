@@ -28,6 +28,9 @@ def db_returning_membership(role, *, actor_role="owner", commit_raises=None):
         user_id=TARGET_ID,
         role=role,
         created_at=datetime.now(timezone.utc),
+        # A membership row has no profile fields; the response leaves them empty.
+        email=None,
+        display_name=None,
     )
     db.query.return_value.filter.return_value.scalar.return_value = actor_role
     db.query.return_value.filter.return_value.populate_existing.return_value.one_or_none.return_value = membership

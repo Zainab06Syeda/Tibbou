@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { disableConnection, listConnections, syncSnowflake } from "@/api/tibbou";
 import DbtContextNotice from "@/components/DbtContextNotice";
@@ -16,6 +17,12 @@ const STATUS_STYLES = {
   failing: "text-red-300",
   invalid: "text-red-300",
 };
+
+// Saved but never validated (or validation failed): the form below picks
+// it up again, with its key, instead of starting over.
+function needsSetup(connection) {
+  return !connection.enabled && connection.status !== "disabled";
+}
 
 export default function SettingsConnection() {
   const { organization } = useOrganization();
@@ -77,8 +84,8 @@ function ConnectionWorkspace() {
       </div>
 
       <DbtContextNotice />
-      {error ? <p role="alert" className="text-sm text-red-300">{error}</p> : null}
-      {notice ? <p role="status" className="text-sm text-emerald-300">{notice}</p> : null}
+      {error ? <p key={error} role="alert" className="text-sm text-red-300 duration-300 animate-in fade-in slide-in-from-top-1">{error}</p> : null}
+      {notice ? <p key={notice} role="status" className="text-sm text-emerald-300 duration-300 animate-in fade-in slide-in-from-top-1">{notice}</p> : null}
 
       <section className="rounded-2xl border border-border bg-card">
         <div className="border-b border-border px-5 py-4">
@@ -95,18 +102,27 @@ function ConnectionWorkspace() {
                 <th className="px-5 py-3" />
               </tr>
             </thead>
-            <tbody>
+            <tbody className="motion-stagger">
               {connections === null ? (
                 <tr><td colSpan={5} className="px-5 py-4 text-sm text-muted-foreground">Loading…</td></tr>
               ) : connections.length ? (
                 connections.map((connection) => (
-                  <tr key={connection.id} className="border-b border-border/60 last:border-0">
+                  <tr
+                    key={connection.id}
+                    className="border-b border-border/60 transition-colors duration-200 last:border-0 hover:bg-secondary/10"
+                  >
                     <td className="px-5 py-3 text-sm">
                       {connection.name}
-                      {!connection.enabled ? <span className="ml-2 text-xs text-muted-foreground">(disabled)</span> : null}
+                      {connection.status === "disabled" ? <span className="ml-2 text-xs text-muted-foreground">(disabled)</span> : null}
                     </td>
-                    <td className={`px-5 py-3 text-sm capitalize ${STATUS_STYLES[connection.status] || "text-emerald-400"}`}>
-                      {connection.status}
+                    <td className={`px-5 py-3 text-sm ${STATUS_STYLES[connection.status] || "text-emerald-400"}`}>
+                      <span className="inline-flex items-center gap-2">
+                        {connection.enabled ? <span className="live-dot" aria-hidden="true" /> : null}
+                        {connection.status === "pending" ? "Setup not finished" : <span className="capitalize">{connection.status}</span>}
+                      </span>
+                      {connection.status === "invalid" && connection.validation_error ? (
+                        <p className="mt-1 max-w-xs text-xs text-muted-foreground">{connection.validation_error}</p>
+                      ) : null}
                     </td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(connection.last_validated_at)}</td>
                     <td className="px-5 py-3 text-sm text-muted-foreground">{formatDate(connection.last_success_at)}</td>
@@ -116,9 +132,19 @@ function ConnectionWorkspace() {
                           type="button"
                           disabled={busyId === connection.id}
                           onClick={() => act(connection, "sync")}
-                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 disabled:opacity-60"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 transition-transform active:scale-95 disabled:opacity-60"
                         >
-                          Sync now
+                          <RefreshCw className={`h-3 w-3 ${busyId === connection.id ? "motion-safe:animate-spin" : ""}`} />
+                          {busyId === connection.id ? "Queuing…" : "Sync now"}
+                        </button>
+                      ) : null}
+                      {needsSetup(connection) && !showAddForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAddForm(true)}
+                          className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-slate-950 transition-transform active:scale-95"
+                        >
+                          Finish setup
                         </button>
                       ) : null}
                       {connection.status !== "disabled" ? (
@@ -144,8 +170,10 @@ function ConnectionWorkspace() {
 
       <section className="rounded-2xl border border-border bg-card p-5">
         {showAddForm ? (
-          <>
-            <h2 className="font-semibold">Add a connection</h2>
+          <div className="duration-300 animate-in fade-in slide-in-from-top-2">
+            <h2 className="font-semibold">
+              {connections?.some(needsSetup) ? "Finish setting up your connection" : "Add a connection"}
+            </h2>
             <div className="mt-4">
               <ConnectionForm
                 defaultName={`Snowflake connection ${(connections?.length || 0) + 1}`}
@@ -163,7 +191,7 @@ function ConnectionWorkspace() {
             >
               Cancel
             </button>
-          </>
+          </div>
         ) : (
           <button
             type="button"
